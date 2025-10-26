@@ -1,0 +1,37 @@
+<RCC>
+    <qresource prefix="/">
+        <file>images/block_blue.png</file>
+        <file>images/block_blue_ss.png</file>
+        <file>images/block_green.png</file>
+        <file>images/block_green_ss.png</file>
+        <file>images/block_red_ss.png</file>
+        <file>images/block_red.png</file>
+        <file>images/block_yellow_ss.png</file>
+        <file>images/block_yellow.png</file>
+        <file>images/blockwars_logo_no_bg.png</file>
+        <file>images/explode_ss.png</file>
+        <file>images/explosion_hi_ss.png</file>
+        <file>images/red_killed_ss.png</file>
+        <file>images/yellow_killed_ss.png</file>
+        <file>images/green_killed_ss.png</file>
+        <file>images/blue_killed_ss.png</file>
+        <file>images/particles/barrelpoof.png</file>
+        <file>images/particles/boomboom-backup.png</file>
+        <file>images/particles/boomboom.png</file>
+        <file>images/particles/boomboom2.png</file>
+        <file>images/particles/boomboom3.png</file>
+        <file>images/particles/ember_mid.png</file>
+        <file>images/particles/explode1.png</file>
+        <file>images/particles/metaldot.png</file>
+        <file>images/particles/metaldot.svg</file>
+        <file>images/particles/particle.png</file>
+        <file>images/particles/particle2.png</file>
+        <file>images/particles/particleA.png</file>
+        <file>images/particles/rocketbacklit.png</file>
+        <file>images/particles/sparks_multi.png</file>
+        <file>images/particles/star.png</file>
+        <file>images/particles/tracer.png</file>
+        <file>images/particles/textures/particles/plasma.tga</file>
+        <file>random_numbers.txt</file>
+    </qresource>
+</RCC>

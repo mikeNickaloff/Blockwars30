@@ -17,6 +17,22 @@ qt_add_qml_module(appBlockwars30
     VERSION 1.0
     QML_FILES
         Main.qml
+        QML_FILES engine/GameScene.qml
+        QML_FILES engine/GameContainer.qml
+        QML_FILES engine/GameLayout.qml
+        QML_FILES engine/GameStaticItem.qml
+        QML_FILES engine/GameDynamicItem.qml
+        QML_FILES engine/AbstractGameItem.qml
+        QML_FILES engine/GameSpriteSheetItem.qml
+        RESOURCES images.qrc
+        QML_FILES game/MainMenuScene.qml
+RESOURCES lib/qmldir
+QML_FILES lib/promise.js lib/Promise.qml lib/PromiseTimer.qml
+QML_FILES game/ui/MenuButton.qml
+QML_FILES game/DebugScene.qml
+SOURCES pool.h pool.cpp
+QML_FILES engine/GameDragItem.qml
+QML_FILES engine/GameDragAndSwapItem.qml engine/GameDropItem.qml
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
@@ -40,3 +56,12 @@ install(TARGETS appBlockwars30
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+
+add_custom_command(
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/images.rcc
+  COMMAND Qt6::rcc -binary ${CMAKE_CURRENT_SOURCE_DIR}/images.qrc
+                   -o ${CMAKE_CURRENT_BINARY_DIR}/images.rcc
+  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/images.qrc
+)
+add_custom_target(assets_rcc ALL
+  DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/images.rcc)
