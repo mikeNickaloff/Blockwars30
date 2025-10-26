@@ -1,5 +1,13 @@
 import QtQuick 2.15
 
-Item {
 
-}
+    DropArea {
+        onDropped: {
+            console.log("Dropped!");
+        }
+        Rectangle {
+            color: "blue"
+            anchors.fill: parent
+        }
+    }
+

@@ -7,7 +7,7 @@ Item {
     property var parentScene
     property var sceneName
     property var sceneItems: ({})
-
+    property var activeDrag: ({})
 
     function getSceneItem(itemName) {
         try {
@@ -23,6 +23,7 @@ Item {
         sceneItems[itemName] = itemObject
         itemObject.gameScene = sceneRoot
         itemObject.itemName = itemName
+        console.log("Added",itemName,"to scene", sceneRoot)
     }
     function setSceneItemProperties(itemName, propsObject) {
         var itm = getScceneItem(itemName);

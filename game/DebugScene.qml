@@ -11,14 +11,21 @@ Engine.GameScene {
         dragParent: debugScene
         gameScene: debugScene
         itemName: "test_rect"
+        width: 120
+        height: 120
+        entry: myRect
         Rectangle {
-
-            color: "red"
-            width: 120
-            height: 120
-            x: 200
-            y: 100
-        }
+            id: myRect
+                    color: "red"
+                   width:  120
+                   height: 120
+                }
+    }
+    Engine.GameDropItem {
+        width: 200
+        height: 200
+        x: 100
+        y: 100
     }
     Engine.GameDynamicItem {
         itemName: "test_button"
