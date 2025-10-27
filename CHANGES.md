@@ -1,3 +1,18 @@
+# Change 4 - Emit Drag Lifecycle Signals
+## Status
+- Complete
+## Context
+- Need generic drag lifecycle hooks so scenes can react to GameDragItem events.
+- Expose drop target data for other QML consumers per in-game wiring needs.
+
+## Proposed Changes
+- Declare itemDragStarted, itemDragMoved, and itemDroppedInDropArea signals in engine/GameScene.qml.
+- Emit the new signals from the respective drag handlers with the requested payloads.
+- Update WHEEL.md to document the new GameScene signals for future reuse.
+
+## Questions / Comments
+- None.
+
 # Change 3 - Harden GameDropItem Drop Handling
 ## Status
 - Complete

@@ -9,6 +9,10 @@ Item {
     property var sceneItems: ({})
     property var activeDrag: ({ source: null, target: null, exiting: false })
 
+    signal itemDragStarted(string itemName, var dragItem, real x, real y)
+    signal itemDragMoved(string itemName, var dragItem, real x, real y, var offsets)
+    signal itemDroppedInDropArea(string dragItemName, var dragItem, string dropItemName, var dropItem, real startX, real startY, real endX, real endY)
+
 
     function getSceneItem(itemName) {
         try {
@@ -48,10 +52,12 @@ Item {
     function handleDropItemExited(_itemName, _dragEvent) {
         activeDrag.exiting = true;
     }
-    function handleDragItemStartDrag(itemName,_x, _y) {
+    function handleDragItemStartDrag(itemName, _x, _y) {
         console.log("Game Scene detected drag start", itemName, _x, _y)
-        activeDrag.source = getSceneItem(itemName)
+        var dragItem = getSceneItem(itemName)
+        activeDrag.source = dragItem
         activeDrag.target = null
+        itemDragStarted(itemName, dragItem, _x, _y)
     }
     function handleDragItemMoved(itemName, _x, _y, offsets) {
         if (activeDrag.exiting) {
@@ -59,13 +65,19 @@ Item {
             activeDrag.exiting = false
             console.log("Game Scene detected drag exit from Drop Item")
         }
+        var dragItem = activeDrag.source || getSceneItem(itemName)
+        itemDragMoved(itemName, dragItem, _x, _y, offsets)
         //console.log("Game Scene detected drag move",itemName, _x, _y, JSON.stringify(offsets));
     }
     function handleDragItemDropped(itemName, _x, _y, _startx, _starty) {
-        if (activeDrag.target == null) {
+        var dragItem = activeDrag.source || getSceneItem(itemName)
+        var dropItem = activeDrag.target
+        if (dropItem == null) {
             console.log("Game Scene detected drop on non-drop item. Fail.");
         } else {
-            console.log("Game Scene detected item drop",itemName, "at", _x, _y, "started at", _startx, _starty, getSceneItem(itemName), "Drop target:",activeDrag.target);
+            console.log("Game Scene detected item drop", itemName, "at", _x, _y, "started at", _startx, _starty, dragItem, "Drop target:", dropItem);
+            var dropItemName = dropItem.itemName !== undefined ? dropItem.itemName : null;
+            itemDroppedInDropArea(itemName, dragItem, dropItemName, dropItem, _startx, _starty, _x, _y);
         }
     }
     function setSceneItemProperties(itemName, propsObject) {

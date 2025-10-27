@@ -34,6 +34,16 @@ SOURCES pool.h pool.cpp
 QML_FILES engine/GameDragItem.qml
 QML_FILES engine/GameDragAndSwapItem.qml engine/GameDropItem.qml
 RESOURCES AGENTS.md WHEEL.md TODO.md CHANGES.md
+QML_FILES game/SinglePlayerScene.qml
+QML_FILES
+QML_FILES game/ui/Hud.qml
+QML_FILES game/ui/PowerupCard.qml
+QML_FILES game/ui/BattleGrid.qml
+QML_FILES game/ui/Block.qml
+QML_FILES
+QML_FILES game/ui/GridCell.qml
+QML_FILES game/ui/GridCell.qml
+QML_FILES game/ui/BlockExplodeParticles.qml
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.

@@ -73,3 +73,8 @@ Scene graph container that tracks named items and coordinates drag payload data.
 ### parentScene -- optional parent scene reference.
 ### sceneName -- identifier for the scene instance.
 ### sceneItems -- dictionary of registered items keyed by name.
+
+## signals/events
+### itemDragStarted(string itemName, var dragItem, real x, real y) -- emitted when a named drag item starts being dragged with the local pointer position.
+### itemDragMoved(string itemName, var dragItem, real x, real y, var offsets) -- emitted on drag movement updates, including the latest offsets from the drag start.
+### itemDroppedInDropArea(string dragItemName, var dragItem, string dropItemName, var dropItem, real startX, real startY, real endX, real endY) -- emitted when a drag item lands on a registered drop area, providing the items and start/end coordinates.
