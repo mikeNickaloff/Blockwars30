@@ -1,19 +1,14 @@
 import QtQuick 2.15
 import "."
 
+/* this is a class of QML item types which can be dragged around when added
+  to a GameScene using GameScene.addSceneDragItem(itemName, itemInstance) */
 AbstractGameItem {
     id: dragItemRoot
-    required property var dragParent
+
     required property var gameScene
     required property var itemName
-    anchors.fill: undefined
-    implicitWidth: dragContentWrapper.implicitWidth
-    implicitHeight: dragContentWrapper.implicitHeight
-    width: entry.width
-    height: entry.height
-    x: entry.x
-    y: entry.y
-
+    required property var entry
 
     default property alias content: dragContentWrapper.data
     property alias contentItem: dragContentWrapper
@@ -21,14 +16,34 @@ AbstractGameItem {
     property real dragStartY: 0
     property real dragCurrentX: 0
     property real dragCurrentY: 0
-    z: dragActive ? 10 : 1
+    property bool dragActive: false
+
     property var payload: []
     property var animationDurationX: 200
     property var animationDurationY: 200
     property bool animationEnabledX: true
     property bool animationEnabledY: true
-    property var handler: dragItemRoot.dragHandler
-    required property var entry
+
+
+
+    signal itemDragging(string itemName, real x, real y)
+    signal itemDropped(string itemName, real x, real y, real startX, real startY)
+    signal itemDraggedTo(string itemName, real x, real y, var offsets)
+
+    anchors.fill: undefined
+    implicitWidth: dragContentWrapper.implicitWidth
+    implicitHeight: dragContentWrapper.implicitHeight
+    width: entry.width
+    height: entry.height
+    x: entry.x
+    y: entry.y
+    z: dragActive ? 10 : 1
+
+    Drag.active: dragActive
+    Drag.source: dragItemRoot
+    Drag.hotSpot.x: width / 2
+    Drag.hotSpot.y: height / 2
+
 
     Item {
         id: dragContentWrapper
@@ -68,14 +83,7 @@ AbstractGameItem {
 
 
 
-    Drag.active: dragActive
-    Drag.source: dragItemRoot
-    Drag.hotSpot.x: width / 2
-    Drag.hotSpot.y: height / 2
-    property bool dragActive: false
-    signal itemDragging(string itemName, real x, real y)
-    signal itemDropped(string itemName, real x, real y, real startX, real startY)
-    signal itemDraggedTo(string itemName, real x, real y, var offsets)
+
     MouseArea {
         property var dragAxis: "XAxis"
         drag.target: parent;

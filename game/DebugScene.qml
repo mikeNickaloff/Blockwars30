@@ -9,7 +9,7 @@ Engine.GameScene {
     anchors.fill: parent
     Engine.GameDragItem {
         id: test_rect
-        dragParent: debugScene
+
         gameScene: debugScene
         itemName: "test_rect"
         width: 120
@@ -18,20 +18,14 @@ Engine.GameScene {
         payload: ["itemName"]
         Rectangle {
             id: myRect
-                    color: "red"
-                   width:  120
-                   height: 120
-                }
-
-        onItemDropped: function(name, _x, _y, _startx, _starty) {
-               console.log("item with name", name, "dropped at", _x, _y, "started at", _startx, _starty)
-        }
-        onItemDraggedTo: function(name, _x, _y, offsets) {
-            console.log("item:", name, "moved to", _x, _y, offsets);
+            color: "red"
+            width:  120
+            height: 120
         }
     }
     Component.onCompleted: {
         addSceneDragItem("test_rect", test_rect)
+        addSceneDropItem("drop_item", dropItem);
     }
     Engine.GameDropItem {
         id: dropItem
@@ -42,20 +36,8 @@ Engine.GameScene {
         x: 100
         y: 100
         entry: blueRect
-        onDropReceived: function(drag) {
-            console.log("dropped", drag);
-            drag.accepted = true
-        }
-        onDragEntered: function(drag) {
-            console.log("entered", (drag.source as Engine.GameDragItem));
-            drag.target = dropItem
-            drag.accept()
 
-        }
-        onDragExited: function(drag) {
-            console.log("exited", drag);
-            //drag.accepted = true;
-        }
+
         Rectangle {
             id: blueRect
             color: "blue"

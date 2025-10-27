@@ -11,18 +11,18 @@ DropArea {
 
     property bool containsDrag: dropItemRoot.containsDrag
     property bool autoSnap: true
-    signal dragEntered(var dragEvent)
-    signal dragExited(var dragEvent)
-    signal dropReceived(var dragEvent)
+    signal dragItemEntered(var itemName, var dragEvent)
+    signal dragItemExited(var itemName, var dragEvent)
+
     property var entry
     Item {
         id: contentWrapper
         anchors.fill: parent
 
     }
-    onEntered: function(drag) { dropItemRoot.dragEntered(drag) }
-    onExited: function(drag) { dropItemRoot.dragExited(drag) }
-    onDropped: function(drag) { Drag.drop(); dropItemRoot.dropReceived(drag) }
+    onEntered: function(drag) { dropItemRoot.dragItemEntered(itemName, drag) }
+    onExited: function(drag) { dropItemRoot.dragItemExited(itemName, drag) }
+
 
     function isGameDragItem(item) {
         return item && item.dragParent !== undefined && item.gameScene !== undefined;

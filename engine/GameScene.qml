@@ -7,7 +7,8 @@ Item {
     property var parentScene
     property var sceneName
     property var sceneItems: ({})
-    property var activeDrag: ({})
+    property var activeDrag: ({ source: null, target: null, exiting: false })
+
 
     function getSceneItem(itemName) {
         try {
@@ -30,11 +31,42 @@ Item {
         itemObject.gameScene = sceneRoot
         itemObject.itemName = itemName
         itemObject.itemDragging.connect(handleDragItemStartDrag)
+        itemObject.itemDraggedTo.connect(handleDragItemMoved)
+        itemObject.itemDropped.connect(handleDragItemDropped)
         console.log("Added",itemName,"to scene", sceneRoot)
     }
-
+    function addSceneDropItem(itemName, itemObject) {
+        sceneItems[itemName] = itemObject
+        itemObject.gameScene = sceneRoot
+        itemObject.dragItemEntered.connect(handleDropItemEntered)
+        itemObject.dragItemExited.connect(handleDropItemExited)
+    }
+    function handleDropItemEntered(_itemName, _dragEvent) {
+        activeDrag.target = getSceneItem(_itemName)
+        activeDrag.exiting = false;
+    }
+    function handleDropItemExited(_itemName, _dragEvent) {
+        activeDrag.exiting = true;
+    }
     function handleDragItemStartDrag(itemName,_x, _y) {
         console.log("Game Scene detected drag start", itemName, _x, _y)
+        activeDrag.source = getSceneItem(itemName)
+        activeDrag.target = null
+    }
+    function handleDragItemMoved(itemName, _x, _y, offsets) {
+        if (activeDrag.exiting) {
+            activeDrag.target = null
+            activeDrag.exiting = false
+            console.log("Game Scene detected drag exit from Drop Item")
+        }
+        //console.log("Game Scene detected drag move",itemName, _x, _y, JSON.stringify(offsets));
+    }
+    function handleDragItemDropped(itemName, _x, _y, _startx, _starty) {
+        if (activeDrag.target == null) {
+            console.log("Game Scene detected drop on non-drop item. Fail.");
+        } else {
+            console.log("Game Scene detected item drop",itemName, "at", _x, _y, "started at", _startx, _starty, getSceneItem(itemName), "Drop target:",activeDrag.target);
+        }
     }
     function setSceneItemProperties(itemName, propsObject) {
         var itm = getScceneItem(itemName);
@@ -47,22 +79,5 @@ Item {
 
     }
 
-    function beginDrag(dragItem, _dragPayload = []) {
-        if (!dragItem || !dragItem.entry)
-            return;
-        activeDrag = ({})
-        var dragPayload = [];
-        if (_dragPayload) {
-            dragPayload = dragPayload.concat(_dragPayload)
-        }
-        Drag.start()
-        console.log("Started dragging with payload",dragPayload);
 
-        for (var u=0; u<dragPayload.length; u++) {
-            var prop = dragPayload[u];
-            activeDrag[prop] = dragItem[prop]
-        }
-        activeDrag.dragItem = dragItem;
-
-    }
 }
