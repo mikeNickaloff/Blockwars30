@@ -25,6 +25,17 @@ Item {
         itemObject.itemName = itemName
         console.log("Added",itemName,"to scene", sceneRoot)
     }
+    function addSceneDragItem(itemName, itemObject) {
+        sceneItems[itemName] = itemObject
+        itemObject.gameScene = sceneRoot
+        itemObject.itemName = itemName
+        itemObject.itemDragging.connect(handleDragItemStartDrag)
+        console.log("Added",itemName,"to scene", sceneRoot)
+    }
+
+    function handleDragItemStartDrag(itemName,_x, _y) {
+        console.log("Game Scene detected drag start", itemName, _x, _y)
+    }
     function setSceneItemProperties(itemName, propsObject) {
         var itm = getScceneItem(itemName);
         if (propsObject.x) { itm.sceneX = propsObject.x }
@@ -44,6 +55,7 @@ Item {
         if (_dragPayload) {
             dragPayload = dragPayload.concat(_dragPayload)
         }
+        Drag.start()
         console.log("Started dragging with payload",dragPayload);
 
         for (var u=0; u<dragPayload.length; u++) {

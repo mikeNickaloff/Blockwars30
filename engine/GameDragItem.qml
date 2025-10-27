@@ -1,7 +1,7 @@
 import QtQuick 2.15
+import "."
 
-
-Item {
+AbstractGameItem {
     id: dragItemRoot
     required property var dragParent
     required property var gameScene
@@ -21,8 +21,8 @@ Item {
     property real dragStartY: 0
     property real dragCurrentX: 0
     property real dragCurrentY: 0
-    z: dragHandler.active ? 10 : 1
-
+    z: dragActive ? 10 : 1
+    property var payload: []
     property var animationDurationX: 200
     property var animationDurationY: 200
     property bool animationEnabledX: true
@@ -43,53 +43,69 @@ Item {
     Behavior on x {
         enabled: animationEnabledX
         ParallelAnimation {
-        NumberAnimation { duration: animationDurationX; easing.type: Easing.OutQuad }
-        ScriptAction {
-            script: function() {
-                entry.y = dragItemRoot.y
+            NumberAnimation { duration: animationDurationX; easing.type: Easing.OutQuad }
+            ScriptAction {
+                script: function() {
+                    entry.x = dragItemRoot.x
+                }
             }
-        }
         }
     }
 
     Behavior on y {
         enabled: animationEnabledX
         ParallelAnimation {
-        NumberAnimation { duration: animationDurationY; easing.type: Easing.OutQuad }
-        ScriptAction {
-            script: function() {
-                entry.y = dragItemRoot.y
-            }
-        }
-        }
-    }
-
-
-
-    DragHandler {
-        id: dragHandler
-        target: dragItemRoot
-        acceptedButtons: Qt.LeftButton
-        xAxis.enabled: true
-        yAxis.enabled: true
-        onActiveChanged: {
-            if (dragHandler.active) {
-                var centerPoint = mapToGlobal(dragItemRoot.width / 2, dragItemRoot.height / 2);
-                dragItemRoot.dragStartX = centerPoint.x;
-                dragItemRoot.dragStartY = centerPoint.y;
-                if (dragItemRoot.dragParent && dragItemRoot.dragParent.beginDrag)
-                    dragItemRoot.dragParent.beginDrag(dragItemRoot);
-            } else {
-                if (dragItemRoot.entry && dragItemRoot.dragParent && dragItemRoot.dragParent.positionEntry)
-                    dragItemRoot.dragParent.positionEntry(dragItemRoot.entry, true);
-                if (dragItemRoot.dragParent && dragItemRoot.dragParent.endDrag)
-                    dragItemRoot.dragParent.endDrag(dragItemRoot);
+            NumberAnimation { duration: animationDurationY; easing.type: Easing.OutQuad }
+            ScriptAction {
+                script: function() {
+                    entry.y = dragItemRoot.y
+                }
             }
         }
     }
 
-    Drag.active: dragHandler.active
+
+
+
+
+    Drag.active: dragActive
     Drag.source: dragItemRoot
     Drag.hotSpot.x: width / 2
     Drag.hotSpot.y: height / 2
+    property bool dragActive: false
+    signal itemDragging(string itemName, real x, real y)
+    signal itemDropped(string itemName, real x, real y, real startX, real startY)
+    signal itemDraggedTo(string itemName, real x, real y, var offsets)
+    MouseArea {
+        property var dragAxis: "XAxis"
+        drag.target: parent;
+        drag.axis: Drag.XAndYAxis
+        drag.minimumX: x - width * 2
+        drag.maximumX: x + width * 2
+        drag.minimumY: y - height * 2
+        drag.maximumY: y + height * 2
+        drag.filterChildren: true
+        anchors.fill: parent
+        onPressed: function(event) {
+          //  drag.active = true
+            dragStartX = event.x;
+            dragStartY = event.y;
+            dragActive = true;
+            itemDragging(itemName, event.x, event.y)
+        }
+        onMouseXChanged: {
+            var offsets = {x: Math.abs(mouseX - dragStartX), y: Math.abs(mouseY - dragStartY) }
+            itemDraggedTo(itemName, mouseX, mouseY, offsets)
+
+        }
+        onMouseYChanged: {
+            var offsets = {x: Math.abs(mouseX - dragStartX), y: Math.abs(mouseY - dragStartY) }
+            itemDraggedTo(itemName, mouseX, mouseY, offsets)
+        }
+        onReleased: function(event) {
+            parent = contentItem.Drag.target !== null ? contentItem.Drag.target : dragItemRoot
+            dragActive = false;
+            itemDropped(itemName, event.x, event.y, dragStartX, dragStartY)
+        }
+    }
 }
