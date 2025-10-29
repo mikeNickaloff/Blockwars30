@@ -312,7 +312,7 @@ Engine.GameScene {
                 id: editorForm
                 width: parent.width
                 spacing: 18
-                padding: 12
+
 
                 RowLayout {
                     Layout.fillWidth: true
@@ -353,7 +353,8 @@ Engine.GameScene {
                     }
                 }
 
-                FormLayout {
+                GridLayout {
+                    columns: 2
                     Layout.fillWidth: true
 
                     Label { text: qsTr("UUID") }

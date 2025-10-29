@@ -83,6 +83,13 @@ QtObject {
             }
             if (!hasCardColor)
                 tx.executeSql("ALTER TABLE Powerups ADD COLUMN cardColor TEXT NOT NULL DEFAULT 'blue'")
+            tx.executeSql(
+                        "CREATE TABLE IF NOT EXISTS PlayerLoadout (" +
+                        "slot INTEGER PRIMARY KEY CHECK(slot >= 0 AND slot < 4), " +
+                        "powerupUuid TEXT, " +
+                        "updatedAt TEXT NOT NULL DEFAULT (datetime('now'))" +
+                        ")")
+            tx.executeSql("CREATE UNIQUE INDEX IF NOT EXISTS idx_loadout_powerup ON PlayerLoadout(powerupUuid)")
         })
 
         seedBuiltinsIfNeeded()
@@ -275,6 +282,63 @@ QtObject {
         })
         return affected > 0
     }
+
+    function normalizeLoadoutRows(rows) {
+        var loadout = [null, null, null, null]
+        for (var i = 0; i < rows.length; ++i) {
+            var row = rows[i]
+            if (row.slot === undefined || row.slot === null)
+                continue
+            if (!row.uuid) {
+                withTransaction(function(tx) {
+                    tx.executeSql("DELETE FROM PlayerLoadout WHERE slot = ?", [row.slot])
+                })
+                continue
+            }
+            loadout[row.slot] = mapRowToPowerup(row)
+        }
+        var result = []
+        for (var slot = 0; slot < 4; ++slot) {
+            result.push({ slot: slot, powerup: loadout[slot] })
+        }
+        return result
+    }
+
+    function fetchLoadout() {
+        ensureSchema()
+        var rows = queryAll(
+                    "SELECT l.slot AS slot, p.uuid AS uuid, p.name AS name, p.target AS target, p.targetSpec AS targetSpec, " +
+                    "p.targetSpecData AS targetSpecData, p.cardHealth AS cardHealth, p.amount AS amount, p.operation AS operation, " +
+                    "p.isCustom AS isCustom, p.cardColor AS cardColor " +
+                    "FROM PlayerLoadout l LEFT JOIN Powerups p ON p.uuid = l.powerupUuid ORDER BY l.slot")
+        return normalizeLoadoutRows(rows)
+    }
+
+    function setLoadoutSlot(slot, powerupUuid) {
+        ensureSchema()
+        if (slot === undefined || slot === null)
+            return fetchLoadout()
+        slot = Number(slot)
+        if (slot < 0 || slot > 3)
+            return fetchLoadout()
+
+        withTransaction(function(tx) {
+            tx.executeSql("DELETE FROM PlayerLoadout WHERE slot = ?", [slot])
+            if (powerupUuid) {
+                tx.executeSql("DELETE FROM PlayerLoadout WHERE powerupUuid = ?", [powerupUuid])
+                tx.executeSql("INSERT OR REPLACE INTO PlayerLoadout (slot, powerupUuid, updatedAt) VALUES (?, ?, datetime('now'))", [slot, powerupUuid])
+            }
+        })
+
+        return fetchLoadout()
+    }
+
+    function clearLoadout() {
+        withTransaction(function(tx) {
+            tx.executeSql("DELETE FROM PlayerLoadout")
+        })
+    }
+
     function builtinPowerups() {
         return [
             {

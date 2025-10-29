@@ -52,6 +52,7 @@ QML_FILES game/factory.js
 RESOURCES README.md
 QML_FILES
 QML_FILES game/ui/GridColumn.qml
+QML_FILES game/ui/MatchSetup.qml
 QML_FILES game/layouts.js
 )
 
