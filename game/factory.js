@@ -25,10 +25,17 @@ function createBlock(blockComp, dragComp, parent, gameScene, opts) {
     const width  = opts.width  || 64;
     const height = opts.height || 64;
     const x      = (opts.x !== undefined) ? opts.x : Math.random() * 300;
-    const y      = (opts.y !== undefined) ? opts.y : 0 -  Math.random() * 300
+    const y      = (opts.y !== undefined) ? opts.y : 0 -  Math.random() * 300;
     const z      = (opts.z !== undefined) ? opts.z : 4;
     const color  = opts.color || "red";
     const namePrefix = opts.namePrefix || "block";
+    const spawnFromAbove = !!opts.spawnFromAbove;
+    const dropOffsetY = spawnFromAbove
+        ? (opts.dropOffsetY !== undefined ? opts.dropOffsetY : height)
+        : 0;
+    const targetX = x;
+    const targetY = y;
+    const spawnY = spawnFromAbove ? (targetY - dropOffsetY) : targetY;
 
     // Generate unique runtime names. QML 'id' is compile-time; use objectName/itemName.
     const blockName = uid(`${namePrefix}_core`);
@@ -56,8 +63,8 @@ function createBlock(blockComp, dragComp, parent, gameScene, opts) {
                                                                      width: width,
                                                                      height: height,
 
-                                                                     x: x,
-                                                                     y: y,
+                                                                     x: targetX,
+                                                                     y: spawnY,
                                                                      z: z
                                                                  }, opts.dragProps || {}));
 
@@ -70,6 +77,68 @@ function createBlock(blockComp, dragComp, parent, gameScene, opts) {
 
     // 3) Reparent the block under the drag item so visuals move together.
     block.parent = dragItem;
+
+    if (spawnFromAbove && dropOffsetY !== 0) {
+        let dropFinalized = false;
+        const finalizeDrop = function() {
+            if (dropFinalized) return;
+            dropFinalized = true;
+            dragItem.visible = true;
+            dragItem.opacity = 1;
+            dragItem.y = targetY;
+            dragItem.dropInProgress = false;
+            if (block && Object.prototype.hasOwnProperty.call(block, "blockState") && block.blockState === "animating") {
+                block.blockState = "idle";
+            }
+        };
+
+        dragItem.visible = false;
+        dragItem.opacity = 0;
+        dragItem.dropInProgress = true;
+        dragItem.dropOffsetY = dropOffsetY;
+        dragItem.targetY = targetY;
+        if (block && Object.prototype.hasOwnProperty.call(block, "blockState")) {
+            block.blockState = "animating";
+        }
+
+        Qt.callLater(function() {
+            if (!dragItem || dropFinalized) return;
+            dragItem.visible = true;
+            dragItem.opacity = 1;
+            dragItem.y = targetY;
+        });
+
+        dragItem.yChanged.connect(function(newValue) {
+            if (dropFinalized) return;
+            if (Math.abs(newValue - targetY) < 0.5) {
+                finalizeDrop();
+            }
+        });
+
+        if (block && block.blockStateChanged && typeof block.blockStateChanged.connect === "function") {
+            block.blockStateChanged.connect(function(newState) {
+                if (dropFinalized) return;
+                if (newState !== "animating") {
+                    finalizeDrop();
+                }
+            });
+        }
+
+        const dropDuration = (opts.dropDurationY !== undefined)
+            ? Math.max(1, opts.dropDurationY)
+            : Math.max(1, dragItem.animationDurationY || 200);
+
+        const dropTimer = Qt.createQmlObject(
+            'import QtQuick 2.15; Timer { interval: ' + dropDuration + '; repeat: false; running: true }',
+            dragItem,
+            'BlockDropFinalizeTimer'
+        );
+
+        dropTimer.triggered.connect(function() {
+            finalizeDrop();
+            if (dropTimer) dropTimer.destroy();
+        });
+    }
 
     // Optional convenience string if some legacy code references names
     //dragItem.entryName = block.objectName;

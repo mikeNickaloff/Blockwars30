@@ -11,6 +11,7 @@ Item {
 
     signal closeRequested()
     signal proceedRequested(var loadout)
+    signal updatedSlotData(int slot, var record)
 
     Data.PowerupDatabase {
         id: database
@@ -21,35 +22,26 @@ Item {
     property var loadoutData: []
     property int selectedSlot: -1
     property bool catalogVisible: false
+    property var slots: []
 
     readonly property var slotCount: 4
 
-    ListModel {
-        id: loadoutModel
+    function populateLoadoutModel(entries) {
+        loadoutData = entries || []
+        for (var i = 0; i < slotCount; ++i) {
+            var slotObj = slots[i]
+            if (!slotObj)
+                continue
+            var entry = (loadoutData[i]) || { slot: i, powerup: null }
+            loadoutData[i] = entry
+            var record = entry.powerup || null
+            slotObj.applyRecord(record)
+        }
     }
 
     function refreshLoadout() {
-        loadoutData = database.fetchLoadout()
-        loadoutModel.clear()
-        for (var slot = 0; slot < slotCount; ++slot) {
-            var entry = loadoutData[slot] || { slot: slot, powerup: null }
-            var record = entry.powerup || null
-            loadoutModel.append({
-                slot: slot,
-                hasPowerup: record !== null,
-                powerupUuid: record ? record.powerupUuid : "",
-                powerupName: record ? record.powerupName : "",
-                powerupTarget: record ? record.powerupTarget : "Self",
-                powerupTargetSpec: record ? record.powerupTargetSpec : "PlayerHealth",
-                powerupTargetSpecData: record ? record.powerupTargetSpecData : [],
-                powerupCardHealth: record ? record.powerupCardHealth : 0,
-                powerupActualAmount: record ? record.powerupActualAmount : 0,
-                powerupOperation: record ? record.powerupOperation : "increase",
-                powerupIsCustom: record ? record.powerupIsCustom : false,
-                powerupCardEnergyRequired: record ? (record.powerupCardEnergyRequired || 0) : 0,
-                powerupCardColor: record ? record.powerupCardColor : "blue"
-            })
-        }
+        var entries = database.fetchLoadout() || []
+        populateLoadoutModel(entries)
     }
 
     function openCatalog(slot) {
@@ -66,7 +58,39 @@ Item {
     function assignPowerupToSlot(slot, powerupUuid) {
         var updated = database.setLoadoutSlot(slot, powerupUuid)
         if (updated)
-            refreshLoadout()
+            populateLoadoutModel(updated)
+    }
+
+    function deserializeSpecData(value) {
+        if (typeof value === "string") {
+            try {
+                var parsed = JSON.parse(value)
+                return parsed === null ? null : parsed
+            } catch (err) {
+                return value
+            }
+        }
+        return value
+    }
+
+    function destroySlots() {
+        for (var i = 0; i < slots.length; ++i) {
+            if (slots[i])
+                slots[i].destroy()
+        }
+        slots = []
+    }
+
+    function createSlots() {
+        destroySlots()
+        for (var i = 0; i < slotCount; ++i) {
+            var slotObj = slotAreaComponent.createObject(slotsColumn, {
+                                                         slotIndex: i,
+                                                         matchSetupRef: matchSetup,
+                                                         slotHeight: Qt.binding(function() { return (slotsColumn.height - slotsColumn.spacing * (matchSetup.slotCount - 1)) / matchSetup.slotCount; })
+                                                     })
+            slots.push(slotObj)
+        }
     }
 
     function handlePowerupChosen(record) {
@@ -76,11 +100,37 @@ Item {
             closeCatalog()
             return
         }
-        assignPowerupToSlot(selectedSlot, record.powerupUuid)
+
+        var normalized = {
+            powerupUuid: record.powerupUuid || "",
+            powerupName: record.powerupName || "",
+            powerupTarget: record.powerupTarget || "Self",
+            powerupTargetSpec: record.powerupTargetSpec || "PlayerHealth",
+            powerupTargetSpecData: deserializeSpecData(record.powerupTargetSpecData),
+            powerupCardHealth: record.powerupCardHealth || 0,
+            powerupActualAmount: record.powerupActualAmount || 0,
+            powerupOperation: record.powerupOperation || "increase",
+            powerupIsCustom: !!record.powerupIsCustom,
+            powerupCardEnergyRequired: record.powerupCardEnergyRequired || 0,
+            powerupCardColor: record.powerupCardColor || "blue"
+        }
+
+        if (slots[selectedSlot])
+            slots[selectedSlot].applyRecord(normalized)
+        loadoutData[selectedSlot] = { slot: selectedSlot, powerup: normalized }
+
+        updatedSlotData(selectedSlot, normalized)
+
+        assignPowerupToSlot(selectedSlot, normalized.powerupUuid)
         closeCatalog()
     }
 
-    Component.onCompleted: refreshLoadout()
+    Component.onCompleted: {
+        createSlots()
+        refreshLoadout()
+    }
+
+    Component.onDestruction: destroySlots()
 
     Rectangle {
         anchors.fill: parent
@@ -132,69 +182,133 @@ Item {
             Layout.preferredWidth: 280
             Layout.fillHeight: true
             spacing: 16
+        }
+    }
+    Component {
+        id: slotAreaComponent
+        Item {
+            id: slotRoot
+            property var matchSetupRef
+            property int slotIndex: 0
+            property real slotHeight: 200
+            property bool hasPowerup: false
+            property string powerupUuid: ""
+            property string powerupName: ""
+            property string powerupTarget: "Self"
+            property string powerupTargetSpec: "PlayerHealth"
+            property var powerupTargetSpecData: []
+            property int powerupCardHealth: 0
+            property int powerupActualAmount: 0
+            property string powerupOperation: "increase"
+            property bool powerupIsCustom: false
+            property int powerupCardEnergyRequired: 0
+            property string powerupCardColor: "blue"
+            property alias card: slotCard
+            property alias frame: slotFrame
 
-            Repeater {
-                model: loadoutModel
-                delegate: Item {
-                    readonly property real slotHeight: (slotsColumn.height - (slotsColumn.spacing * (matchSetup.slotCount - 1))) / matchSetup.slotCount
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: slotHeight
+            Layout.fillWidth: true
+            Layout.preferredHeight: slotHeight > 0 ? slotHeight : (matchSetupRef ? matchSetupRef.height / matchSetupRef.slotCount : 200)
 
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: 14
-                        color: hasPowerup ? "#182539" : "#131e2d"
-                        border.width: 2
-                        border.color: hasPowerup ? "#64ffda" : "#2a3b52"
+            function applyRecord(record) {
+                if (!record || !record.powerupUuid) {
+                    hasPowerup = false
+                    powerupUuid = ""
+                    powerupName = ""
+                    powerupTarget = "Self"
+                    powerupTargetSpec = "PlayerHealth"
+                    powerupTargetSpecData = []
+                    powerupCardHealth = 0
+                    powerupActualAmount = 0
+                    powerupOperation = "increase"
+                    powerupIsCustom = false
+                    powerupCardEnergyRequired = 0
+                    powerupCardColor = "blue"
+                    slotCard.applyRecord({
+                        powerupUuid: "",
+                        powerupName: "",
+                        powerupTarget: "Self",
+                        powerupTargetSpec: "PlayerHealth",
+                        powerupTargetSpecData: [],
+                        powerupCardHealth: 0,
+                        powerupActualAmount: 0,
+                        powerupOperation: "increase",
+                        powerupIsCustom: false,
+                        powerupCardEnergyRequired: 0,
+                        powerupCardColor: "blue"
+                    })
+                } else {
+                    hasPowerup = true
+                    powerupUuid = record.powerupUuid || ""
+                    powerupName = record.powerupName || ""
+                    powerupTarget = record.powerupTarget || "Self"
+                    powerupTargetSpec = record.powerupTargetSpec || "PlayerHealth"
+                    powerupTargetSpecData = record.powerupTargetSpecData || []
+                    powerupCardHealth = record.powerupCardHealth || 0
+                    powerupActualAmount = record.powerupActualAmount || 0
+                    powerupOperation = record.powerupOperation || "increase"
+                    powerupIsCustom = record.powerupIsCustom ? true : false
+                    powerupCardEnergyRequired = record.powerupCardEnergyRequired || 0
+                    powerupCardColor = record.powerupCardColor || "blue"
+                    slotCard.applyRecord(record)
+                }
+            }
 
-                        UI.PowerupCard {
-                            visible: hasPowerup
-                            anchors.centerIn: parent
-                            width: parent.width * 0.85
-                            height: parent.height * 0.9
-                            powerupUuid: powerupUuid
-                            powerupName: powerupName
-                            powerupTarget: powerupTarget
-                            powerupTargetSpec: powerupTargetSpec
-                            powerupTargetSpecData: powerupTargetSpecData
-                            powerupCardHealth: powerupCardHealth
-                            powerupActualAmount: powerupActualAmount
-                            powerupOperation: powerupOperation
-                            powerupIsCustom: powerupIsCustom
-                            powerupCardEnergyRequired: powerupCardEnergyRequired
-                            powerupCardColor: powerupCardColor
-                        }
+            Rectangle {
+                id: slotFrame
+                anchors.fill: parent
+                radius: 14
+                color: hasPowerup ? "#182539" : "#131e2d"
+                border.width: 2
+                border.color: hasPowerup ? "#64ffda" : "#2a3b52"
 
-                        Column {
-                            visible: !hasPowerup
-                            anchors.centerIn: parent
-                            spacing: 6
-                            Text {
-                                text: qsTr("Slot %1").arg(slot + 1)
-                                font.pixelSize: 16
-                                color: "#78909c"
-                                horizontalAlignment: Text.AlignHCenter
-                                width: parent.width
-                            }
-                            Text {
-                                text: qsTr("Tap to select a powerup")
-                                font.pixelSize: 12
-                                color: "#455a64"
-                                horizontalAlignment: Text.AlignHCenter
-                                width: parent.width
-                            }
-                        }
+                UI.PowerupCard {
+                    id: slotCard
+                    visible: hasPowerup
+                    anchors.centerIn: parent
+                    width: parent.width * 0.7
+                    height: parent.height * 0.8
+                    powerupUuid: slotRoot.powerupUuid
+                    powerupName: slotRoot.powerupName
+                    powerupTarget: slotRoot.powerupTarget
+                    powerupTargetSpec: slotRoot.powerupTargetSpec
+                    powerupTargetSpecData: slotRoot.powerupTargetSpecData
+                    powerupCardHealth: slotRoot.powerupCardHealth
+                    powerupActualAmount: slotRoot.powerupActualAmount
+                    powerupOperation: slotRoot.powerupOperation
+                    powerupIsCustom: slotRoot.powerupIsCustom
+                    powerupCardEnergyRequired: slotRoot.powerupCardEnergyRequired
+                    powerupCardColor: slotRoot.powerupCardColor
+                }
 
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: openCatalog(slot)
-                            cursorShape: Qt.PointingHandCursor
-                        }
+                Column {
+                    visible: !hasPowerup
+                    anchors.centerIn: parent
+                    spacing: 6
+                    Text {
+                        text: qsTr("Slot %1").arg(slotIndex + 1)
+                        font.pixelSize: 16
+                        color: "#78909c"
+                        horizontalAlignment: Text.AlignHCenter
+                        width: parent.width
                     }
+                    Text {
+                        text: qsTr("Tap to select a powerup")
+                        font.pixelSize: 12
+                        color: "#455a64"
+                        horizontalAlignment: Text.AlignHCenter
+                        width: parent.width
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: matchSetupRef.openCatalog(slotIndex)
                 }
             }
         }
     }
+
 
     Rectangle {
         id: catalogOverlay
@@ -245,7 +359,7 @@ Item {
                     id: overlayCatalog
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    onPowerupChosen: handlePowerupChosen(record)
+                    onPowerupChosen: function(record) { handlePowerupChosen(record); }
                 }
             }
         }

@@ -17,6 +17,16 @@ Item {
     implicitWidth: 180
     implicitHeight: 260
 
+    readonly property real cardWidth: width > 0 ? width : implicitWidth
+    readonly property real cardHeight: height > 0 ? height : implicitHeight
+    readonly property real cardMinDim: Math.min(cardWidth, cardHeight)
+    readonly property real cardMargin: cardHeight * 0.06
+    readonly property real sectionSpacing: cardHeight * 0.04
+    readonly property real nameFont: Math.max(12, cardHeight * 0.1)
+    readonly property real infoFont: Math.max(10, cardHeight * 0.055)
+    readonly property real labelFont: Math.max(10, cardHeight * 0.05)
+    readonly property real energyFont: Math.max(11, cardHeight * 0.08)
+
     property alias powerupData: powerup
     property alias powerupUuid: powerup.powerupUuid
     property alias powerupName: powerup.powerupName
@@ -39,7 +49,15 @@ Item {
         powerup.powerupName = record.powerupName || ""
         powerup.powerupTarget = record.powerupTarget || powerup.targets.Self
         powerup.powerupTargetSpec = record.powerupTargetSpec || powerup.targetSpecs.PlayerHealth
-        powerup.powerupTargetSpecData = record.powerupTargetSpecData !== undefined ? record.powerupTargetSpecData : []
+        var specData = record.powerupTargetSpecData
+        if (typeof specData === "string") {
+            try {
+                specData = JSON.parse(specData)
+            } catch (err) {
+                specData = specData
+            }
+        }
+        powerup.powerupTargetSpecData = specData !== undefined ? specData : []
         powerup.powerupCardHealth = record.powerupCardHealth || 0
         powerup.powerupActualAmount = record.powerupActualAmount || 0
         powerup.powerupOperation = record.powerupOperation || powerup.operations.Increase
@@ -80,21 +98,21 @@ Item {
     Rectangle {
         id: cardFace
         anchors.fill: parent
-        radius: 18
+        radius: cardMinDim * 0.12
         color: powerup.powerupIsCustom ? "#1f2f46" : "#241a33"
-        border.width: 3
+        border.width: Math.max(1, cardMinDim * 0.02)
         border.color: cardColorHex()
         antialiasing: true
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 12
-            spacing: 10
+            anchors.margins: cardMargin
+            spacing: sectionSpacing
 
             Text {
                 Layout.fillWidth: true
                 text: powerup.powerupName.length ? powerup.powerupName : qsTr("Unnamed Powerup")
-                font.pixelSize: 18
+                font.pixelSize: nameFont
                 font.bold: true
                 color: "#ffffff"
                 horizontalAlignment: Text.AlignHCenter
@@ -103,7 +121,7 @@ Item {
             Text {
                 Layout.fillWidth: true
                 text: powerup.powerupIsCustom ? qsTr("Custom Powerup") : qsTr("Built-in Powerup")
-                font.pixelSize: 12
+                font.pixelSize: infoFont
                 color: powerup.powerupIsCustom ? "#64b5f6" : "#ffcc80"
                 horizontalAlignment: Text.AlignHCenter
             }
@@ -111,7 +129,7 @@ Item {
             Item {
                 id: iconArea
                 Layout.fillWidth: true
-                Layout.preferredHeight: 140
+                Layout.preferredHeight: cardHeight * 0.45
 
                 Loader {
                     anchors.fill: parent
@@ -123,19 +141,19 @@ Item {
 
             ColumnLayout {
                 Layout.fillWidth: true
-                spacing: 6
+                spacing: cardHeight * 0.025
 
                 Text {
                     Layout.alignment: Qt.AlignHCenter
                     text: qsTr("Powerup Amount: %1").arg(formattedAmount())
-                    font.pixelSize: 14
+                    font.pixelSize: labelFont
                     color: "#e8eaf6"
                 }
 
                 Text {
                     Layout.alignment: Qt.AlignHCenter
                     text: qsTr("Energy Cost: %1").arg(powerup.powerupCardEnergyRequired)
-                    font.pixelSize: 14
+                    font.pixelSize: energyFont
                     color: "#64ffda"
                 }
             }
@@ -155,16 +173,17 @@ Item {
         id: playerIcon
         Rectangle {
             anchors.centerIn: parent
-            width: parent.width * 0.6
-            height: width
-            radius: width / 2
+            readonly property real iconDim: Math.min(parent.width, parent.height) * 0.35
+            width: iconDim
+            height: iconDim
+            radius: iconDim / 2
             color: "#2f3a4f"
-            border.width: 3
+            border.width: Math.max(1, iconDim * 0.12)
             border.color: cardColorHex()
             Text {
                 anchors.centerIn: parent
                 text: "👤"
-                font.pixelSize: parent.width * 0.45
+                font.pixelSize: iconDim * 0.55
             }
         }
     }
@@ -172,28 +191,30 @@ Item {
     Component {
         id: blocksIcon
         Item {
-            anchors.centerIn: parent
-            width: parent.width * 0.9
-            height: width
+            anchors.top: parent.top
+            readonly property real iconDim: Math.min(parent.width, parent.height) * 0.45
+            width: iconDim
+            height: iconDim
 
             Grid {
                 id: blockGrid
                 anchors.centerIn: parent
-                width: parent.width
-                height: parent.height
+                width: iconDim
+                height: iconDim
                 rows: 6
                 columns: 6
-                rowSpacing: 2
-                columnSpacing: 2
+                rowSpacing: iconDim * 0.015
+                columnSpacing: iconDim * 0.015
                 Repeater {
                     model: 36
                     delegate: Rectangle {
-                        width: (blockGrid.width - (blockGrid.columns - 1) * blockGrid.columnSpacing) / blockGrid.columns
-                        height: (blockGrid.height - (blockGrid.rows - 1) * blockGrid.rowSpacing) / blockGrid.rows
+                        readonly property real cellSize: (iconDim - (blockGrid.columns - 1) * blockGrid.columnSpacing) / blockGrid.columns
+                        width: cellSize
+                        height: cellSize
                         color: targetedBlocksContains(Math.floor(index / 6), index % 6) ? cardColorHex() : unselectedBlockColor()
-                        border.width: targetedBlocksContains(Math.floor(index / 6), index % 6) ? 0 : 1
+                        border.width: targetedBlocksContains(Math.floor(index / 6), index % 6) ? 0 : Math.max(1, cellSize * 0.05)
                         border.color: "#24364d"
-                        radius: 2
+                        radius: cellSize * 0.2
                     }
                 }
             }
@@ -203,28 +224,29 @@ Item {
     Component {
         id: cardIcon
         Rectangle {
-            anchors.centerIn: parent
-            width: parent.width * 0.55
-            height: parent.height * 0.85
-            radius: 10
+            anchors.top: parent.top
+            readonly property real iconDim: Math.min(parent.width, parent.height) * 0.25
+            width: iconDim
+            height: iconDim * 1.3
+            radius: iconDim * 0.18
             color: "#101622"
-            border.width: 4
+            border.width: Math.max(1, iconDim * 0.1)
             border.color: cardColorHex()
             Column {
                 anchors.centerIn: parent
-                spacing: 6
+                spacing: iconDim * 0.1
                 Rectangle {
-                    width: parent.width * 0.6
-                    height: width * 1.2
-                    radius: 6
-                    border.width: 2
+                    width: iconDim * 0.65
+                    height: iconDim
+                    radius: iconDim * 0.15
+                    border.width: Math.max(1, iconDim * 0.08)
                     border.color: cardColorHex()
                     color: "transparent"
                 }
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: qsTr("Card")
-                    font.pixelSize: 12
+                    font.pixelSize: Math.max(8, iconDim * 0.3)
                     color: "#e0e0e0"
                 }
             }

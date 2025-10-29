@@ -27,6 +27,7 @@ Item {
     property int gapY: 2
     property int originX: 40
     property int originY: 40
+    readonly property int gridHeight: (gridRows * cellH) + Math.max(0, gridRows - 1) * gapY
 
     // Keep references if you want to reflow or mutate later
     property var instances: []
@@ -45,70 +46,45 @@ Item {
                 append({ color: colors[i % colors.length] });
         }
     }
+    GridLayout {
+        anchors.fill: parent
+        rows: 6
+        flow: GridLayout.TopToBottom
+        Repeater {
+            model: blocksModel
+            delegate:    Engine.GameDragItem {
+                required property var model
+                required property var index
+                id: test_rect
 
-    // The object pump
-    Instantiator {
-        id: pump
-        active: true
-        model: blocksModel
+                gameScene: debugScene
+                itemName: "block_dragItem_" + index
+                width: 64
+                height: 64
+                x: 0
+                y: 0
+                z: 4
+                entry:  redBlock
+                payload: ["itemName"]
+                UI.Block {
+                           id: redBlock
+                           blockColor: model.color
+                           itemName: "block_" + index
+                           gameScene: root.gameScene
+                           width: 64
+                           height: 64
+                       }
 
-        // Delegate is a QtObject wrapper; creation happens in JS
-        delegate: QtObject {
-            // hold the created item
-            property var itemRef: null
 
-            Component.onCompleted: {
-                const g = Layout.gridPos(index, {
-                    cols: gridCols, cellW: cellW, cellH: cellH,
-                    gapX: gapX, gapY: gapY, originX: originX, originY: originY
-                });
-                itemRef = Factory.createBlock(
-                    blockComp,        // UI.Block
-                    dragComp,         // Engine.GameDragItem
-                    debugScene,       // parent directly under the scene
-                    debugScene,       // scene for registration
-                    {
-                        color: model.color || modelData.color || "red",
-                        x: g.x,
-                        y: g.y,
-                        width: cellW,
-                        height: cellH,
-                        namePrefix: "gridBlock"
-                    }
-                );
-                instances.push(itemRef);
-                     // debugScene.addSceneDragItem(itemRef.itemName, itemRef)
-
-            }
-
-            Component.onDestruction: {
-                if (itemRef) {
-                    if (itemRef.destroy) itemRef.destroy();
-                    const idx = instances.indexOf(itemRef);
-                    if (idx >= 0) instances.splice(idx, 1);
+                Component.onCompleted: {
+                    root.gameScene.addSceneDragItem(test_rect.itemName, test_rect);
                 }
             }
         }
     }
 
-    // Reflow everything whenever you change layout params
-    function arrangeAll() {
-        for (let i = 0; i < instances.length; ++i) {
-            const g = Layout.gridPos(i, {
-                cols: gridCols, cellW: cellW, cellH: cellH,
-                gapX: gapX, gapY: gapY, originX: originX, originY: originY
-            });
-            const it = instances[i];
-            if (it) { it.x = g.x; it.y = g.y; it.width = cellW; it.height = cellH; }
-        }
+    function getBlockEntryAt(row, column) {
+        /* find the block located in the GridLayout at row, column pair and return that Item.entry */
     }
-
-    // Example: tweak columns at runtime and reflow, because why be boring
-    Keys.onPressed: if (event.key === Qt.Key_Plus) { gridCols = Math.max(1, gridCols - 1); arrangeAll(); }
-    Keys.onReleased: if (event.key === Qt.Key_Minus) { gridCols += 1; arrangeAll(); }
-
-    // Initial layout sync in case something touches params after startup
-    Component.onCompleted: arrangeAll()
-
 
 }

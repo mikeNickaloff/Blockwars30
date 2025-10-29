@@ -21,6 +21,18 @@ Item {
         id: powerupModel
     }
 
+    function deserializeSpecData(value) {
+        if (typeof value === "string") {
+            try {
+                var parsed = JSON.parse(value)
+                return parsed === null ? null : parsed
+            } catch (err) {
+                return value
+            }
+        }
+        return value
+    }
+
     function refresh() {
         database.ensureSchema()
         var records = database.fetchAllPowerups() || []
@@ -32,7 +44,7 @@ Item {
                 powerupName: record.powerupName || "",
                 powerupTarget: record.powerupTarget || "Self",
                 powerupTargetSpec: record.powerupTargetSpec || "PlayerHealth",
-                powerupTargetSpecData: record.powerupTargetSpecData || [],
+                powerupTargetSpecData: JSON.stringify(record.powerupTargetSpecData !== undefined ? record.powerupTargetSpecData : null),
                 powerupCardHealth: record.powerupCardHealth || 0,
                 powerupActualAmount: record.powerupActualAmount || 0,
                 powerupOperation: record.powerupOperation || "increase",
@@ -67,19 +79,19 @@ Item {
             powerupName: model.powerupName
             powerupTarget: model.powerupTarget
             powerupTargetSpec: model.powerupTargetSpec
-            powerupTargetSpecData: model.powerupTargetSpecData
+            powerupTargetSpecData: deserializeSpecData(model.powerupTargetSpecData)
             powerupCardHealth: model.powerupCardHealth
             powerupActualAmount: model.powerupActualAmount
             powerupOperation: model.powerupOperation
             powerupIsCustom: model.powerupIsCustom
             powerupCardColor: model.powerupCardColor
-            onActivated: {
+            onActivated: function(uuid) {
                 powerupChosen({
-                    powerupUuid: powerupUuid,
+                    powerupUuid: uuid || powerupUuid,
                     powerupName: powerupName,
                     powerupTarget: powerupTarget,
                     powerupTargetSpec: powerupTargetSpec,
-                    powerupTargetSpecData: powerupTargetSpecData,
+                    powerupTargetSpecData: model.powerupTargetSpecData,
                     powerupCardHealth: powerupCardHealth,
                     powerupActualAmount: powerupActualAmount,
                     powerupOperation: powerupOperation,

@@ -65,6 +65,18 @@ Engine.GameScene {
         return palette[key] || palette.blue
     }
 
+    function deserializeSpecData(value) {
+        if (typeof value === "string") {
+            try {
+                var parsed = JSON.parse(value)
+                return parsed === null ? null : parsed
+            } catch (err) {
+                return value
+            }
+        }
+        return value
+    }
+
     function cloneBlockArray(items) {
         var clone = []
         if (!Array.isArray(items))
@@ -114,8 +126,9 @@ Engine.GameScene {
         editingPowerup.powerupUuid = record.powerupUuid || ""
         editingPowerup.powerupName = record.powerupName || ""
         editingPowerup.powerupTarget = record.powerupTarget || editingPowerup.targets.Self
+        var specData = deserializeSpecData(record.powerupTargetSpecData)
         editingPowerup.setTargetSpec(record.powerupTargetSpec || editingPowerup.targetSpecs.PlayerHealth,
-                                     record.powerupTargetSpecData)
+                                     specData)
         editingPowerup.powerupCardHealth = record.powerupCardHealth || 0
         editingPowerup.powerupActualAmount = record.powerupActualAmount || 0
         editingPowerup.powerupOperation = record.powerupOperation || editingPowerup.powerupOperation
@@ -242,7 +255,7 @@ Engine.GameScene {
                     id: catalog
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    onPowerupChosen: {
+                    onPowerupChosen: function(record) {
                         if (record && record.powerupUuid)
                             loadPowerupFromDatabase(record.powerupUuid)
                     }
