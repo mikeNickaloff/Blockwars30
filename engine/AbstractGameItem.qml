@@ -1,4 +1,5 @@
 import QtQuick 2.15
+import QtQuick.Controls
 import "."
 Item {
     id: abstractItemRoot
@@ -12,7 +13,8 @@ Item {
     property var itemInstance
     property var itemName
     property alias itemComponent: abstractGameItemLoader.sourceComponent
-
+    property var pendingOffsetX: 0
+    property var pendingOffsetY: 0
     function deriveParent() {
 
         if (isUndefined(itemParent)) {
@@ -44,4 +46,5 @@ Item {
         id: abstractGameItemLoader
         anchors.fill: parent
     }
+
 }

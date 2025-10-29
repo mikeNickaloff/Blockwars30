@@ -4,8 +4,8 @@ import QtQml
 
 DropArea {
     id: dropItemRoot
-    required property var gameScene
-    required property var itemName
+    property var gameScene
+     property var itemName
     default property alias content: contentWrapper.data
     property alias contentItem: contentWrapper
 

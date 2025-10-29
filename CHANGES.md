@@ -1,3 +1,51 @@
+# Change 7 - Rebuild WHEEL Reference
+## Status
+- Complete
+## Context
+- WHEEL.md needs to capture an up-to-date inventory of every callable in the project.
+- Project guidelines require WHEEL.md to be the quick reference for available functions, properties, and signals per file.
+- Current WHEEL.md predates recent work and may omit newly added files or APIs.
+
+## Proposed Changes
+- Catalogue all project files to identify exposed functions, properties, members, and signals.
+- Rewrite WHEEL.md using the prescribed format with one section per file and concise descriptions.
+- Cross-check against README.md goals to ensure terminology and context stay aligned.
+
+## Questions / Comments
+- None.
+
+# Change 6 - Finalize GridCell Drop Target
+## Status
+- Complete
+## Context
+- BattleGrid relies on GridCell delegates to expose drop behavior and state.
+- Current GridCell stub offers no item tracking or visual feedback.
+- Need cell-level API to report assigned items and notify BattleGrid about drops.
+
+## Proposed Changes
+- Implement GridCell as a GameDropItem with sizing helpers and assigned-item tracking.
+- Emit signals for assignment changes and offer helper methods for centering items.
+- Expose styling hooks (colors/borders) for future UI polish while keeping defaults subdued.
+
+## Questions / Comments
+- None.
+
+# Change 5 - Implement BattleGrid Component
+## Status
+- Complete
+## Context
+- Need a 6x6 battle grid that integrates with existing drag/drop infrastructure.
+- Blocks must queue above the grid per column and drop into cells on demand.
+- Swapping occupied cells during drops should be handled within the grid component.
+
+## Proposed Changes
+- Lay out BattleGrid as a Row hosting six explicit ListView columns using a shared delegate.
+- Track cell and block assignments to enable findCell(row, col) and swap-on-drop behavior.
+- Implement buffered block creation per column with timed drop execution into visible cells.
+
+## Questions / Comments
+- Clarify expected timing for buffer drop intervals (using a default until gameplay tuning).
+
 # Change 4 - Emit Drag Lifecycle Signals
 ## Status
 - Complete

@@ -1,46 +1,77 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQml
 import "../../engine" as Engine
 import "../../lib" as Lib
 import "." as UI
-Engine.GameDragItem {
+Item {
     id: blockRoot
-    required property var gameScene
-    required property var itemName
-    required property var blockColor
+
+    property var blockColor
     property alias source: blockLoader.source
-    Layout.fillWidth: true
-    Layout.fillHeight: true
-    Loader {
-        anchors.fill: parent
-        id: blockLoader
+    width: 92
+    height: 92
 
+    property var gameScene
+    property var itemName
+    property var blockState: "init"
+    property Component launchComponent: blockLaunchComponent
+    property Component idleComponent: blockIdleComponent
+    property Component explodeComponent: blockExplodeComponent
+
+    signal blockDestroyed()
+
+    Component.onCompleted: {
+        blockRoot.blockState = "idle"
+        console.log("block instance created")
     }
-    property var blockState: "idle"
-
     onBlockStateChanged: {
+        console.log("block state set to",blockState);
         if (blockState == "launch") {
-            blockLoader.source = BlockLaunchComponent.createObject(blockRoot, { spriteSheetFile: blockLaunchSpriteSheet() })
+            blockLoader.sourceComponent = launchComponent;
+        }
+        if (blockState == "explode") {
+            blockLoader.sourceComponent = explodeComponent;
+            postLaunchStateTimer.running = true;
 
+        }
+
+        if (blockState == "idle") {
+            blockLoader.sourceComponent = idleComponent;
         }
     }
 
-    component BlockLaunchComponent: Engine.GameSpriteSheetItem {
-        required property var spriteSheetFile
+    Component {
+        id: blockLaunchComponent
+        Engine.GameSpriteSheetItem {
+            spriteSheetFile: blockLaunchSpriteSheet()
+            gameScene: blockRoot.gameScene
+            itemName: blockRoot.itemName
+            frameWidth: 64
+            frameHeight: 64
+            frameCount: 5
+            frameDuration: 60
+            loops: 1
+            onAnimationEndCallback: function(itemName) {
+                blockRoot.blockState = "explode"
+            }
+        }
     }
 
-    component BlockIdleComponent: Rectangle {
+    Component {
+        id: blockIdleComponent
+        Rectangle {
             color: "black"
             border.color: "black"
-            anchors.fill: parent
 
+            property var blockColor: blockRoot.blockColor
             Image {
-                source: "qrc:///images/block_" + block_color + ".png"
+                source: "qrc:///images/block_" + blockRoot.blockColor + ".png"
                 height: {
-                    return block.height * 0.90
+                    return parent.height * 0.90
                 }
                 width: {
-                    return block.width * 0.90
+                    return parent.width * 0.90
                 }
 
                 id: blockImage
@@ -51,14 +82,62 @@ Engine.GameDragItem {
                 anchors.centerIn: parent
                 visible: true
             }
-
+        }
     }
-    component BlockExplodeComponent: UI.BlockExplodeParticles {
+    Component {
+        id: blockExplodeComponent
+        UI.BlockExplodeParticles {
+            id: particles
+            Component.onCompleted: {
+                particles.burstAt(blockRoot.x + (blockRoot.width * 0.5), blockRoot.y + (blockRoot.height * 0.5))
+            }
+        }
 
     }
 
 
 
     function blockLaunchSpriteSheet() { return "qrc:///images/block_" + blockColor + "_ss.png" }
+
+        Loader {
+            id: blockLoader
+            width: blockRoot.width
+            height: blockRoot.height
+            sourceComponent: blockIdleComponent
+
+            onLoaded: {
+                blockLoader.visible = true
+            }
+
+    }
+        Timer {
+            id: postLaunchStateTimer
+            interval: 2840
+            running: false
+            repeat: false
+            triggeredOnStart: false
+            onTriggered: {
+                blockRoot.blockState = "destroyed"
+                blockRoot.blockDestroyed()
+            }
+        }
+        Engine.GameDropItem {
+            id: blockRootDropItem
+            anchors.fill: blockRoot
+            gameScene: blockRoot.gameScene
+            itemName: blockRoot.itemName
+            entry: dropAreaRect
+            width: 64
+            height: 64
+            Rectangle {
+                id: dropAreaRect
+              width: 64
+              height: 64
+              opacity: 0
+            }
+            Component.onCompleted: {
+                blockRoot.gameScene.addSceneDropItem(blockRoot.itemName + "_drop", blockRootDropItem);
+            }
+        }
 
 }

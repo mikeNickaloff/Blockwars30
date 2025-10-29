@@ -36,15 +36,23 @@ QML_FILES engine/GameDragAndSwapItem.qml engine/GameDropItem.qml
 RESOURCES AGENTS.md WHEEL.md TODO.md CHANGES.md
 QML_FILES game/SinglePlayerScene.qml
 QML_FILES game/PowerupEditor.qml
+QML_FILES game/data/PowerupDatabase.qml
+QML_FILES game/data/PowerupItem.qml
 QML_FILES
 QML_FILES game/ui/Hud.qml
 QML_FILES game/ui/PowerupCard.qml
+QML_FILES game/ui/PowerupCatalog.qml
 QML_FILES game/ui/BattleGrid.qml
 QML_FILES game/ui/Block.qml
 QML_FILES
 QML_FILES game/ui/GridCell.qml
 QML_FILES game/ui/GridCell.qml
 QML_FILES game/ui/BlockExplodeParticles.qml
+QML_FILES game/factory.js
+RESOURCES README.md
+QML_FILES
+QML_FILES game/ui/GridColumn.qml
+QML_FILES game/layouts.js
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.

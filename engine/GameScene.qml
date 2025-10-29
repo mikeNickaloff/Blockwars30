@@ -22,7 +22,11 @@ Item {
             return null
         }
     }
-
+    function removeSceneItem(itemName) {
+        var itm = sceneItem[itemName];
+        itm.destroy();
+        sceneItem[itemName] = null
+    }
     function addSceneItem(itemName, itemObject) {
 
         sceneItems[itemName] = itemObject
@@ -44,10 +48,12 @@ Item {
         itemObject.gameScene = sceneRoot
         itemObject.dragItemEntered.connect(handleDropItemEntered)
         itemObject.dragItemExited.connect(handleDropItemExited)
+           console.log("Added",itemName,"to scene", sceneRoot)
     }
     function handleDropItemEntered(_itemName, _dragEvent) {
         activeDrag.target = getSceneItem(_itemName)
         activeDrag.exiting = false;
+           console.log(_itemName,"entered")
     }
     function handleDropItemExited(_itemName, _dragEvent) {
         activeDrag.exiting = true;

@@ -4,28 +4,70 @@ import QtQuick.Layouts
 import "../engine" as Engine
 import "../lib" as Lib
 import "ui" as UI
+import "factory.js" as Factory
 Engine.GameScene {
     id: debugScene
     anchors.fill: parent
-    Engine.GameDragItem {
+    property var blocks: []
+   Engine.GameDragItem {
         id: test_rect
 
         gameScene: debugScene
         itemName: "test_rect"
-        width: 120
-        height: 120
-        entry: myRect
+        width: 64
+        height: 64
+        x: Math.random() * 300
+        y: Math.random() * 300
+        z: 4
+        entry:  redBlock
         payload: ["itemName"]
-        Rectangle {
-            id: myRect
-            color: "red"
-            width:  120
-            height: 120
+        UI.Block {
+                   id: redBlock
+                   blockColor: "red"
+                   itemName: "red_block"
+                   gameScene: debugScene
+                   width: 64
+                   height: 64
+               }
+
+
+    }
+   Engine.GameDragItem {
+        id: test_rect2
+
+        gameScene: debugScene
+        itemName: "test_rect2"
+        width: 64
+        height: 64
+        x: Math.random() * 300
+        y: Math.random() * 300
+        z: 4
+        entry: redBlock2
+        payload: ["itemName"]
+        UI.Block {
+            id: redBlock2
+            blockColor: "blue"
+            itemName: "red_block2"
+            gameScene: debugScene
+            width: 64
+            height: 64
         }
+
+
     }
     Component.onCompleted: {
         addSceneDragItem("test_rect", test_rect)
+        addSceneDragItem("test_rect2", test_rect2)
         addSceneDropItem("drop_item", dropItem);
+        for (var i=0; i<36; i++) {
+            var blk = createBlock("green");
+            blk.x = i % 6 * 64
+            blk.animationDurationX = 60
+            blk.animationDurationY = 60
+            blk.entryDestroyed.connect(removeSceneItem)
+            debugScene.blocks.push(blk);
+        }
+
     }
     Engine.GameDropItem {
         id: dropItem
@@ -45,6 +87,26 @@ Engine.GameScene {
             height: 200
         }
     }
+    property int launchIndex: 0
+    Timer {
+        id: launchTimer
+        interval: 90
+        running: false
+        repeat: true
+
+        onTriggered: {
+            if (debugScene.blocks.length == 0) { launchTimer.running = false; } else {
+            var itm3 = (debugScene.blocks.pop() as Engine.GameDragItem)
+
+
+            itm3.y += 400
+
+
+            itm3.entry.blockState = "launch"
+            }
+
+        }
+    }
     Engine.GameDynamicItem {
         itemName: "test_button"
         gameScene: debugScene
@@ -56,7 +118,55 @@ Engine.GameScene {
             y: 300
             onClicked: function(evt) {
                 console.log(debugScene.getSceneItem("test_button"), debugScene.getSceneItem("test_rect"))
+
+                launchTimer.running = true
+                var new_blocks = [];
+
+                for (var i=0; i<36; i++) {
+                    var blk = createBlock("blue");
+                    blk.x = (i % 6) * 64
+                    blk.y = Math.floor(i / 6) * 64;
+                    blk.animationDurationX = 60
+                    blk.animationDurationY = 360
+
+                    debugScene.blocks.push(blk);
+                }
             }
         }
     }
+
+    UI.BattleGrid {
+        id:battleGrid
+        width: 300
+        height: 300
+        x: 100
+        y: 200
+        gameScene: debugScene
+
+
+        Component.onCompleted: {
+
+        }
+    }
+    Component {
+            id: dragComp
+            Engine.GameDragItem { }   // has required: gameScene, itemName, entry
+        }
+
+        Component {
+            id: blockComp
+            UI.Block { }              // has blockColor, itemName, gameScene...
+        }
+
+        // Example call
+        function createBlock(color) {
+            return Factory.createBlock(
+                blockComp,
+                dragComp,
+                debugScene,          // final visual parent
+                debugScene,    // scene for registration
+                { color: color, namePrefix: color + "Block" }
+            );
+        }
+
 }

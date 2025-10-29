@@ -4,11 +4,12 @@ GameDynamicItem {
     id: itemRoot
     property alias spriteSheetFile: spriteRoot.source
     property alias frameCount: spriteRoot.frameCount
-    property var frameDuration: spriteRoot.frameDuration
-    property var frameWidth: spriteRoot.frameWidth
-    property var frameHeight: spriteRoot.frameHeight
-    property var animationEndCallback
-    property var animationBeginCallback
+    property alias loops: spriteRoot.loops
+    property alias frameDuration: spriteRoot.frameDuration
+    property alias frameWidth: spriteRoot.frameWidth
+    property alias frameHeight: spriteRoot.frameHeight
+    signal animationEndCallback(var itemName)
+    signal animationBeginCallback(var itemName)
 
     function startAnimation() {
 
@@ -17,6 +18,7 @@ GameDynamicItem {
     AnimatedSprite {
         id: spriteRoot
         interpolate: true
+        smooth: true
         onRunningChanged: {
             if (spriteRoot.running) {
 

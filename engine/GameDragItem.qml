@@ -29,6 +29,7 @@ AbstractGameItem {
     signal itemDragging(string itemName, real x, real y)
     signal itemDropped(string itemName, real x, real y, real startX, real startY)
     signal itemDraggedTo(string itemName, real x, real y, var offsets)
+    signal entryDestroyed(string itemName)
 
     anchors.fill: undefined
     implicitWidth: dragContentWrapper.implicitWidth
@@ -88,10 +89,10 @@ AbstractGameItem {
         property var dragAxis: "XAxis"
         drag.target: parent;
         drag.axis: Drag.XAndYAxis
-        drag.minimumX: x - width * 2
+       /* drag.minimumX: x - width * 2
         drag.maximumX: x + width * 2
         drag.minimumY: y - height * 2
-        drag.maximumY: y + height * 2
+        drag.maximumY: y + height * 2 */
         drag.filterChildren: true
         anchors.fill: parent
         onPressed: function(event) {
@@ -116,4 +117,8 @@ AbstractGameItem {
             itemDropped(itemName, event.x, event.y, dragStartX, dragStartY)
         }
     }
+    function destroySceneItem() {
+        entryDestroyed(dragItemRoot.itemName)
+    }
+
 }
