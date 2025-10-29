@@ -35,6 +35,7 @@ QML_FILES engine/GameDragItem.qml
 QML_FILES engine/GameDragAndSwapItem.qml engine/GameDropItem.qml
 RESOURCES AGENTS.md WHEEL.md TODO.md CHANGES.md
 QML_FILES game/SinglePlayerScene.qml
+QML_FILES game/PowerupEditor.qml
 QML_FILES
 QML_FILES game/ui/Hud.qml
 QML_FILES game/ui/PowerupCard.qml
