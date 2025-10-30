@@ -1,7 +1,7 @@
 # AGENT INSTRUCTIONS
 - Read this entire document and follow it's process strictly. Details matter here.
-- Each section is a critical part of the system and cannot be overlooked.
-- Do not change the engine/*.qml files unless asked to do so specifically by filename.
+- Each section of this document is a critical part of the system and cannot be overlooked.
+- DO NOT change the engine/* files unless asked to do so specifically by filename or with prior approval
 - Confirm any changes to engine/ as they will have large impacts
 
 # Agentic Data Storage and retrieval 
@@ -35,31 +35,33 @@
 ``` sqlite3 WHEEL.db .dump > WHEEL.sql ```
 
 
-#### sqlite3 database tools for WHEEL.db 
+### sqlite3 database tools for WHEEL.db 
+
+#### wheel.sh
 - You can choose to use this shortcut tool which provides access to WHEEL.db through a convenience shell script: ``` wheel.sh ```
 - Many common operations are already supported and relevant data can quickly be accessed.
 
 ##### List all functions in the game/ui directory
 ``` ./wheel.sh --relpath "game/ui" --type function ```
 
-#### Show all members from engine/Game*
+##### Show all members from engine/Game*
 ``` ./wheel.sh --relpath engine/Game --type member ```
+
+
+- There are many more use cases for wheel.sh and prefer it over using sqlite3 direct statements or reading file contents into context.
 
 
 #### Uses
 
-- Use WHEEL.db to quickly find functions and their purpose in project files without reading though every single file.
-- Every function/method/routine that can be accessed or executed should be recorded here with the signature and parameters.
-- Always read the file WHEEL.db  to see what other things have already been invented in this project before creating implementation steps or writing code.
-- WHEEL.db is to be updated with a list of every file and every function/property available in each file in the project along with a quick one sentence explainer as to what it does and any special considerations that are not immediately obvious.
-- WHEEL.db should use this format
-- Always reference WHEEL.db when writing code and utilize existing types or helpers when possible instead of creating new ones. Try to use base classes to decrease the amount of overall code paths in the application by reusing existing ones when possible.
+- Use wheel.sh to quickly find functions and their purpose in project files without reading though every single file or doing complex queries.
+- Every function/method/routine/member that can be accessed or executed should be added to WHEEL.db (sqlite database) with the signature and parameters whenever new code is added.
+- Always check with wheel.sh to see what other things have already been invented in this project before creating implementation steps or writing code.
+- WHEEL.db is to be updated with a list of every file and every function/property available in each file in the project along with a descriptive paragraph between one and 3 sentences explainer as to what it does, what it effects, and any special considerations that are not immediately obvious.
+- Always reference wheel.sh or WHEEL.db directly when writing code and utilize existing types or helpers when possible instead of creating new ones. Try to use base classes to decrease the amount of overall code paths in the application by reusing existing ones when possible.
 
-- Use sqlite commands to get information about the project or to see what functions are available in various files instead of re-reading them.. only re-read when not enough information is present in the database 
-- Always update the WHEEL.db database when new functions, definitions of any kind are added
-- Before making any changes, create a new change row then add new rows for change_files and change_defs for each file / definition to be added.
+- Before making any changes, create a new change row in WHEEL.db then add new rows for change_files and change_defs for each file / definition to be added.
 - Once finished with the change table, then use select commands with inner join to get list of all files and defs that need to be changed and create todo items based on that output.
-- When requesting approval for changes, make sure to use output from sqlite3 databases and format in markdown when providing data. do not rely on internal memory only.
+- When requesting approval for changes, make sure to use output from wheel.sh for providing data. do not rely on internal memory only.
 - If sqlite3 not available on system, silently ignore this section.
 
 
@@ -68,4 +70,3 @@
 * Dont reinvent the wheel or modify existing code unless absolutely necessary.
 * Look for a way to implement changes by using existing code first, then if not possible, create new code paths.
 * Work slowly and go step-by-step to make compact, requirement fulfilling, working, elegant code.
-
