@@ -32,6 +32,8 @@ Item {
     // Keep references if you want to reflow or mutate later
     property var instances: []
     property int blockSequence: 0
+    readonly property var blockPalette: ["red", "blue", "green", "yellow"]
+    readonly property string blockIdPrefix: "grid_block"
 
     readonly property var stateList: [
         "init", "initializing", "initialized",
@@ -451,10 +453,82 @@ Item {
         const block = blockRepeater.itemAt(index);
         return block ? block : null;
     }
+    function composeBlockDescriptor(row, column, targetIndex) {
+        const palette = blockPalette || [];
+        const paletteSize = palette.length;
+        const fallbackColor = paletteSize > 0 ? palette[0] : "red";
+        const paletteIndex = paletteSize > 0 ? Math.floor(Math.random() * paletteSize) : 0;
+        const chosenColor = paletteSize > 0 ? palette[paletteIndex] : fallbackColor;
+
+        blockSequence += 1;
+
+        return {
+            __index: targetIndex,
+            blockId: blockIdPrefix + "_" + blockSequence,
+            row: row,
+            column: column,
+            color: chosenColor
+        };
+    }
+
+    function scheduleBlockForPosition(row, column, pendingDescriptors) {
+        const targetIndex = indexFor(row, column);
+        if (targetIndex < 0)
+            return;
+
+        if (getBlockWrapper(row, column))
+            return;
+
+        if (targetIndex < blocksModel.count) {
+            const existingEntry = blocksModel.get(targetIndex);
+            if (existingEntry && existingEntry.row === row && existingEntry.column === column)
+                return;
+        }
+
+        const descriptor = composeBlockDescriptor(row, column, targetIndex);
+        if (!descriptor)
+            return;
+
+        pendingDescriptors.push(descriptor);
+    }
+
     function fillGrid() {
         console.log("Filling Grid Model", blocksModel);
-        const colors = ["red", "blue", "green", "yellow"];
 
+        const pendingDescriptors = [];
+
+        for (var row = gridRows - 1; row >= 0; --row) {
+            for (var column = 0; column < gridCols; ++column) {
+                scheduleBlockForPosition(row, column, pendingDescriptors);
+            }
+        }
+
+        if (!pendingDescriptors.length)
+            return;
+
+        pendingDescriptors.sort(function(a, b) {
+            return a.__index - b.__index;
+        });
+
+        for (var i = 0; i < pendingDescriptors.length; ++i) {
+            const descriptor = pendingDescriptors[i];
+            const insertionIndex = descriptor.__index <= blocksModel.count
+                    ? descriptor.__index
+                    : blocksModel.count;
+
+            const payload = {
+                blockId: descriptor.blockId,
+                row: descriptor.row,
+                column: descriptor.column,
+                color: descriptor.color
+            };
+
+            if (insertionIndex === blocksModel.count) {
+                blocksModel.append(payload);
+            } else {
+                blocksModel.insert(insertionIndex, payload);
+            }
+        }
     }
 
 
