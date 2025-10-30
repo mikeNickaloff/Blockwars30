@@ -33,6 +33,324 @@ Item {
     property var instances: []
     property int blockSequence: 0
 
+    readonly property var stateList: [
+        "init", "initializing", "initialized",
+        "precompact", "precompacting", "precompacted",
+        "compact", "compacting", "compacted",
+        "fill", "filling", "filled",
+        "fastfill", "fastfilling", "fastfilled",
+        "match", "matching", "matched",
+        "launch", "launching", "launched",
+        "fastlaunch", "fastlaunching", "fastlaunched",
+        "powerup", "poweruping", "poweruped",
+        "swap", "swapping", "swapped",
+        "aimove", "aimoving", "aimoved",
+        "ready", "wait", "waiting"
+    ]
+    property string currentState: "init"
+    property string previousState: ""
+    property bool stateTransitionInProgress: false
+
+    signal stateTransitionStarted(string fromState, string toState, var metadata)
+    signal stateTransitionFinished(string fromState, string toState, var metadata)
+    signal stateTransitionRejected(string requestedState, string reason, var metadata)
+
+    readonly property var stateHelper: ({
+        name: currentState,
+        equals: function(value) {
+            return root.normalizeStateName(value) === root.currentState;
+        }
+    })
+
+    function normalizeStateName(value) {
+        if (value === null || value === undefined)
+            return "";
+        return value.toString().trim().toLowerCase();
+    }
+
+    function isValidState(value) {
+        const normalized = normalizeStateName(value);
+        return stateList.indexOf(normalized) !== -1;
+    }
+
+    function setState(nextState, metadata) {
+        const normalized = normalizeStateName(nextState);
+        const payload = metadata || {};
+
+        if (!isValidState(normalized)) {
+            stateTransitionRejected(normalized, "invalid", payload);
+            console.warn("BattleGrid: Ignoring request to change to unknown state", nextState);
+            return false;
+        }
+
+        if (stateTransitionInProgress) {
+            stateTransitionRejected(normalized, "transition_in_progress", payload);
+            console.warn("BattleGrid: State transition already in progress", currentState, "->", normalized);
+            return false;
+        }
+
+        if (currentState === normalized) {
+            return true;
+        }
+
+        stateTransitionInProgress = true;
+        const fromState = currentState;
+        stateTransitionStarted(fromState, normalized, payload);
+
+        previousState = fromState;
+        currentState = normalized;
+
+        stateTransitionInProgress = false;
+        stateTransitionFinished(fromState, normalized, payload);
+        return true;
+    }
+
+    function ensureState(targetState, metadata) {
+        if (currentState === normalizeStateName(targetState))
+            return true;
+        return setState(targetState, metadata);
+    }
+
+    property var battleQueue: []
+    property bool queueProcessing: false
+    property var activeQueueItem: null
+    property QtObject activeQueuePromise: null
+    property QtObject initializationPromise: null
+
+    signal queueItemStarted(var item)
+    signal queueItemCompleted(var item, var context)
+
+    onCurrentStateChanged: handleCurrentStateChanged(currentState, previousState)
+
+    Component.onCompleted: {
+        enqueueInitialStateBootstrap();
+    }
+
+    Timer {
+        id: nextQueueItemTimer
+        interval: 50
+        running: false
+        repeat: false
+        triggeredOnStart: false
+        onTriggered: root.processNextQueueItem()
+    }
+
+    Component {
+        id: queuePromiseFactory
+        Lib.Promise { }
+    }
+
+    Component {
+        id: initializationPromiseFactory
+        Lib.Promise { }
+    }
+
+    function initializeQueuePromise() {
+        disposeQueuePromise();
+        activeQueuePromise = queuePromiseFactory.createObject(root);
+        if (!activeQueuePromise) {
+            console.warn("BattleGrid: Failed to create queue promise instance");
+            return null;
+        }
+
+        activeQueuePromise.fulfilled.connect(handleQueuePromiseFulfilled);
+        queueItemCompleted.connect(activeQueuePromise.resolve);
+        return activeQueuePromise;
+    }
+
+    function disposeQueuePromise() {
+        if (!activeQueuePromise)
+            return;
+
+        try {
+            queueItemCompleted.disconnect(activeQueuePromise.resolve);
+            activeQueuePromise.fulfilled.disconnect(handleQueuePromiseFulfilled);
+        } catch (err) {
+        }
+
+        activeQueuePromise.destroy();
+        activeQueuePromise = null;
+    }
+
+    function handleQueuePromiseFulfilled() {
+        nextQueueItemTimer.running = false;
+        nextQueueItemTimer.start();
+    }
+
+    function finishActiveQueueItem(context) {
+        queueItemCompleted(activeQueueItem, context || {});
+    }
+
+    function resetInitializationPromise() {
+        if (!initializationPromise)
+            return;
+
+        initializationPromise.destroy();
+        initializationPromise = null;
+    }
+
+    function createInitializationPromise() {
+        resetInitializationPromise();
+        initializationPromise = initializationPromiseFactory.createObject(root);
+        if (!initializationPromise) {
+            console.warn("BattleGrid: Unable to create initialization promise instance");
+            return null;
+        }
+        return initializationPromise;
+    }
+
+    function enqueueBattleEvent(eventObject) {
+        if (!eventObject)
+            return;
+        battleQueue.push(eventObject);
+        if (!queueProcessing) {
+            queueProcessing = true;
+            nextQueueItemTimer.start();
+        }
+    }
+
+    function processNextQueueItem() {
+        if (!battleQueue.length) {
+            queueProcessing = false;
+            disposeQueuePromise();
+            return;
+        }
+
+        activeQueueItem = battleQueue.shift();
+        queueItemStarted(activeQueueItem);
+        const promiseInstance = initializeQueuePromise();
+        if (!promiseInstance) {
+            finishActiveQueueItem({ error: "promise_init_failed" });
+            return;
+        }
+
+        if (activeQueueItem.start_function && typeof activeQueueItem.start_function === "function") {
+            try {
+                activeQueueItem.start_function(root, activeQueueItem);
+            } catch (err) {
+                console.warn("BattleGrid: start_function error", err);
+            }
+        }
+
+        const runEnd = function(context) {
+            const endContext = context === undefined ? {} : context;
+            if (activeQueueItem && typeof activeQueueItem.end_function === "function") {
+                try {
+                    activeQueueItem.end_function(root, activeQueueItem, endContext);
+                } catch (err) {
+                    console.warn("BattleGrid: end_function error", err);
+                }
+            } else {
+                finishActiveQueueItem(endContext);
+            }
+        };
+
+        const handleMainCompletion = function(context) {
+            runEnd(context);
+        };
+
+        const executeMain = function() {
+            if (!activeQueueItem.main_function || typeof activeQueueItem.main_function !== "function") {
+                handleMainCompletion({ warning: "no_main_function" });
+                return;
+            }
+
+            let mainResult;
+            try {
+                mainResult = activeQueueItem.main_function(root, activeQueueItem);
+            } catch (err) {
+                console.warn("BattleGrid: main_function error", err);
+                handleMainCompletion({ error: err });
+                return;
+            }
+
+            if (isPromiseLike(mainResult)) {
+                mainResult.then(function(value) {
+                    handleMainCompletion({ result: value });
+                }, function(reason) {
+                    console.warn("BattleGrid: main_function promise rejected", reason);
+                    handleMainCompletion({ error: reason });
+                });
+            } else {
+                handleMainCompletion(mainResult);
+            }
+        };
+
+        executeMain();
+    }
+
+    function handleCurrentStateChanged(newState, oldState) {
+        switch (newState) {
+        default:
+            break;
+        }
+    }
+
+    function enqueueInitialStateBootstrap() {
+        enqueueBattleEvent({
+            name: "state-init",
+            start_function: function(grid, item) {
+                grid.setState("init", { source: item.name });
+            },
+            end_function: function(grid) {
+                grid.enqueueInitializationTransition();
+                grid.finishActiveQueueItem({ state: "init" });
+            }
+        });
+    }
+
+    function enqueueInitializationTransition() {
+        enqueueBattleEvent({
+            name: "state-initializing",
+            start_function: function(grid, item) {
+                grid.setState("initializing", { source: item.name });
+            },
+            main_function: function(grid) {
+                const initPromise = grid.createInitializationPromise();
+                if (!initPromise)
+                    return null;
+
+                // TODO: Replace stub resolution with real powerup data signal.
+                initPromise.resolve({ powerups: [] });
+                return initPromise;
+            },
+            end_function: function(grid, item, context) {
+                const payload = context && context.result ? context.result : context;
+                grid.resetInitializationPromise();
+                grid.enqueueInitializedState(payload);
+                grid.finishActiveQueueItem({ state: "initializing_complete", payload: payload });
+            }
+        });
+    }
+
+    function enqueueInitializedState(payload) {
+        enqueueBattleEvent({
+            name: "state-initialized",
+            payload: payload,
+            start_function: function(grid, item) {
+                grid.setState("initialized", { source: item.name, payload: item.payload });
+            },
+            main_function: function(grid, item) {
+                return item.payload || {};
+            },
+            end_function: function(grid, item, context) {
+                const summary = context && context.result ? context.result : context;
+                grid.finishActiveQueueItem({ state: "initialized", payload: summary });
+            }
+        });
+    }
+
+    // NOTE: GameScene should connect its powerup data ready signal to this handler.
+    function handleInitialPowerupDataLoaded(powerupData) {
+        if (!initializationPromise)
+            return;
+        initializationPromise.resolve(powerupData);
+    }
+
+    function isPromiseLike(value) {
+        return value && (typeof value.then === "function");
+    }
+
     // Components for factory injection
     Component { id: dragComp;  Engine.GameDragItem { } }
     Component { id: blockComp; UI.Block { } }
@@ -85,27 +403,24 @@ Item {
 
 
                 UI.Block {
-                           id: blockEntry
-                           blockColor: model.color
-                           itemName: delegate.blockId
-                           gameScene: root.gameScene
-                           width: 64
-                           height: 64
-                           row: model.row
-                           column: model.column
-                           maxRows: root.gridRows
-                           onBlockStateChanged: {
-                               if (blockState == "destroyed") {
-                                delegate.entry.blockDestroyed(itemName);
-                               }
-
-                       }
-
+                    id: blockEntry
+                    blockColor: model.color
+                    itemName: delegate.blockId
+                    gameScene: root.gameScene
+                    width: 64
+                    height: 64
+                    row: model.row
+                    column: model.column
+                    maxRows: root.gridRows
+                    onBlockStateChanged: {
+                        if (blockState === "destroyed") {
+                            delegate.entry.blockDestroyed(itemName);
+                        }
+                    }
+                }
 
                 Component.onCompleted: {
                     delegate.rootObject.gameScene.addSceneDragItem(delegate.itemName, delegate);
-
-
                 }
 
                 Text {
@@ -118,7 +433,7 @@ Item {
             }
         }
     }
-    }
+
 
     function getBlockEntryAt(row, column) {
         if (row < 0 || row >= gridRows || column < 0 || column >= gridCols)
