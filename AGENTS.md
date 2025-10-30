@@ -16,7 +16,10 @@
 #### setup
 - First check for WHEEL.md and WHEEL.db files
 - If WHEEL.db doesnt exist, then check if sqlite3 in PATH with ```which sqlite3```
-- If sqlite3 exists, then proceeed to create a new sqlite3 database called WHEEL.db with the following tables:
+- If sqlite3 exists, use the following command to build the database into WHEEL.db
+``` sqlite3 ./WHEEL.db < WHEEL.sql ```
+
+- The database structure of WHEEL.db is as follows:
 
 > * files (id, relpath, description) // project files
 > * defs (id, file_id, type, parameters, description) // type is member, function, or signal
@@ -26,15 +29,15 @@
 > * change_defs (id, change_id, file_id, def_id, description) // describes change to parameters or description of new definition if needed by a change #
 > * todo (id, change_id, change_defs_id, change_files_id, change_defs_id, description) // todo items to be done, one item for each definition in each file that is to be added or changed. Must have all fields completed before starting work
 
-- Once the WHEEL.db file is created, parse WHEEL.md (if it exists) and populate the database by using sqlite3 command line tool to populate the database (make sure to safely sanitize input)
-
 - when available, WHEEL.db  replaces the need for:
 >- CHANGES.md
 >- WHEEL.md
 >- TODO.md 
 
-#### Uses
+- After making changes to WHEEL.db, use sqlite3 to dump the database to WHEEL.sql with the command
+``` sqlite3 WHEEL.db .dump > WHEEL.sql ```
 
+#### Uses
 
 - Use WHEEL.db to quickly find functions and their purpose in project files without reading though every single file.
 - Every function/method/routine that can be accessed or executed should be recorded here with the signature and parameters.
