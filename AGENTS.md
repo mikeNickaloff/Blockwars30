@@ -1,6 +1,8 @@
 # AGENT INSTRUCTIONS
 - Read this entire document and follow it's process strictly. Details matter here.
 - Each section is a critical part of the system and cannot be overlooked.
+- Do not change the engine/*.qml files unless asked to do so specifically by filename.
+- Confirm any changes to engine/ as they will have large impacts
 
 # Agentic Data Storage and retrieval 
 - provides accurate data retrieval and storage about a project

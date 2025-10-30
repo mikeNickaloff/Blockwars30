@@ -19,7 +19,7 @@ Item {
     property Component idleComponent: blockIdleComponent
     property Component explodeComponent: blockExplodeComponent
 
-    signal blockDestroyed()
+    signal blockDestroyed(var itemName)
 
     Component.onCompleted: {
         blockRoot.blockState = "idle"
@@ -118,7 +118,7 @@ Item {
             triggeredOnStart: false
             onTriggered: {
                 blockRoot.blockState = "destroyed"
-                blockRoot.blockDestroyed()
+                //blockRoot.blockDestroyed()
             }
         }
         Engine.GameDropItem {

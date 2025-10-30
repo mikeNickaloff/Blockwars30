@@ -9,7 +9,8 @@ Engine.GameScene {
     id: debugScene
     anchors.fill: parent
     property var blocks: []
-   Engine.GameDragItem {
+    property alias checkRefillTimer: checkRefillTimer
+   /* Engine.GameDragItem {
         id: test_rect
 
         gameScene: debugScene
@@ -54,9 +55,9 @@ Engine.GameScene {
         }
 
 
-    }
+    } */
     Component.onCompleted: {
-        addSceneDragItem("test_rect", test_rect)
+        /*addSceneDragItem("test_rect", test_rect)
         addSceneDragItem("test_rect2", test_rect2)
         addSceneDropItem("drop_item", dropItem);
         for (var i=0; i<36; i++) {
@@ -66,7 +67,7 @@ Engine.GameScene {
             blk.animationDurationY = 60
             blk.entryDestroyed.connect(removeSceneItem)
             debugScene.blocks.push(blk);
-        }
+        } */
 
     }
     Engine.GameDropItem {
@@ -89,20 +90,37 @@ Engine.GameScene {
     }
     property int launchIndex: 0
     Timer {
+        id: checkRefillTimer
+        interval: 4000
+        repeat: false
+        triggeredOnStart: false
+        running: false
+        onTriggered: {
+            battleGrid.fillGrid();
+        }
+        }
+    Timer {
         id: launchTimer
         interval: 90
         running: false
         repeat: true
 
         onTriggered: {
-            if (debugScene.blocks.length == 0) { launchTimer.running = false; } else {
-            var itm3 = (debugScene.blocks.pop() as Engine.GameDragItem)
+             if (debugScene.blocks.length > 0)  {
+                 var itm3 = (debugScene.blocks.pop() as Engine.GameDragItem)
 
 
-            itm3.y += 400
+                 itm3.y += 400
 
 
-            itm3.entry.blockState = "launch"
+                 itm3.entry.blockState = "launch"
+                 if (debugScene.blocks.length == 0) {
+                     launchTimer.running = false;
+                     console.log("got last block launched, connecting destroyed state change to fill timer");
+                     checkRefillTimer.running = true;
+                     checkRefillTimer.restart();
+                 }
+
             }
 
         }
@@ -122,14 +140,13 @@ Engine.GameScene {
                 launchTimer.running = true
                 var new_blocks = [];
 
-                for (var i=0; i<36; i++) {
-                    var blk = createBlock("blue");
-                    blk.x = (i % 6) * 64
-                    blk.y = Math.floor(i / 6) * 64;
-                    blk.animationDurationX = 60
-                    blk.animationDurationY = 360
+                for (var i=0; i<8; i++) {
+                    var blk = battleGrid.getBlockEntryAt(((i * 2) % 6), Math.floor((i * 2) / 6))
+                    var wrapper = battleGrid.getBlockWrapper(((i * 2) % 6), Math.floor((i * 2) / 6))
+                    wrapper.animationDurationX = 60
+                    wrapper.animationDurationY = 360
 
-                    debugScene.blocks.push(blk);
+                    debugScene.blocks.push(wrapper);
                 }
             }
         }

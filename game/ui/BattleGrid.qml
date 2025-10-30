@@ -28,7 +28,7 @@ Item {
     property int originX: 40
     property int originY: 40
     readonly property int gridHeight: (gridRows * cellH) + Math.max(0, gridRows - 1) * gapY
-
+    property alias blocksModel: blocksModel
     // Keep references if you want to reflow or mutate later
     property var instances: []
 
@@ -41,21 +41,28 @@ Item {
         id: blocksModel
         // 36 entries for 6x6, but do whatever
         Component.onCompleted: {
-            const colors = ["red","blue","green","yellow"];
-            for (let i = 0; i < 36; ++i)
-                append({ color: colors[i % colors.length] });
+            fillGrid();
         }
     }
-    GridLayout {
+    Grid {
         anchors.fill: parent
         rows: 6
-        flow: GridLayout.TopToBottom
+        columns: 6
+        flow: Grid.TopToBottom
+        move: Transition {
+            NumberAnimation { properties: "x,y"; duration: 1000
+            }
+        }
         Repeater {
+            id: blockRepeater
             model: blocksModel
-            delegate:    Engine.GameDragItem {
+
+             Engine.GameDragItem {
                 required property var model
                 required property var index
-                id: test_rect
+                property var rootObject: root
+                property var blocksModel: root.blocksModel
+                id: delegate
 
                 gameScene: debugScene
                 itemName: "block_dragItem_" + index
@@ -64,8 +71,11 @@ Item {
                 x: 0
                 y: 0
                 z: 4
+
                 entry:  redBlock
                 payload: ["itemName"]
+                property var myIndex: index
+
                 UI.Block {
                            id: redBlock
                            blockColor: model.color
@@ -73,18 +83,53 @@ Item {
                            gameScene: root.gameScene
                            width: 64
                            height: 64
+                           onBlockStateChanged: {
+                               if (blockState == "destroyed") {
+                                delegate.entry.blockDestroyed(itemName);
+                               }
+                           }
                        }
 
 
-                Component.onCompleted: {
-                    root.gameScene.addSceneDragItem(test_rect.itemName, test_rect);
+                function transmitDestroyEntry(entryItemName) {
+                    rootObject.blocksModel.remove(delegate.myIndex, 1)
+                    rootObject.gameScene.removeSceneItem(delegate.itemName)
                 }
+                Component.onCompleted: {
+                    delegate.rootObject.gameScene.addSceneDragItem(delegate.itemName, delegate);
+                    delegate.entry.blockDestroyed.connect(delegate.transmitDestroyEntry)
+
+
+                }
+
+
             }
         }
     }
 
     function getBlockEntryAt(row, column) {
-        /* find the block located in the GridLayout at row, column pair and return that Item.entry */
+        if (row < 0 || row >= gridRows || column < 0 || column >= gridCols)
+            return null;
+
+        const index = (column * gridRows) + row;
+        const block = blockRepeater.itemAt(index);
+        return block ? block.entry : null;
+    }
+    function getBlockWrapper(row, column) {
+        if (row < 0 || row >= gridRows || column < 0 || column >= gridCols)
+            return null;
+
+        const index = (column * gridRows) + row;
+        const block = blockRepeater.itemAt(index);
+        return block ? block : null;
+    }
+    function fillGrid() {
+        console.log("Filling Grid Model", blocksModel);
+        const colors = ["red","blue","green","yellow"];
+        while (blocksModel.count < 36) {
+            var i = blocksModel.count;
+            blocksModel.append({ color: colors[i % colors.length] });
+    }
     }
 
 }
