@@ -52,6 +52,7 @@ Item {
     property string currentState: "init"
     property string previousState: ""
     property bool stateTransitionInProgress: false
+    property bool stateMachineManagedInitialization: false
 
     signal stateTransitionStarted(string fromState, string toState, var metadata)
     signal stateTransitionFinished(string fromState, string toState, var metadata)
@@ -118,6 +119,11 @@ Item {
     property var activeQueueItem: null
     property QtObject activeQueuePromise: null
     property QtObject initializationPromise: null
+
+    UI.GameStateMachine {
+        id: gameStateCoordinator
+        battleGrid: root
+    }
 
     signal queueItemStarted(var item)
     signal queueItemCompleted(var item, var context)
@@ -319,7 +325,8 @@ Item {
             end_function: function(grid, item, context) {
                 const payload = context && context.result ? context.result : context;
                 grid.resetInitializationPromise();
-                grid.enqueueInitializedState(payload);
+                if (!grid.stateMachineManagedInitialization)
+                    grid.enqueueInitializedState(payload);
                 grid.finishActiveQueueItem({ state: "initializing_complete", payload: payload });
             }
         });
