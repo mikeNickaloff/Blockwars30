@@ -23,9 +23,11 @@ Item {
         }
     }
     function removeSceneItem(itemName) {
-        var itm = sceneItem[itemName];
-        itm.destroy();
-        sceneItem[itemName] = null
+
+        console.log("Removing item", itemName)
+        var itm = sceneItems[itemName];
+      //  itm.destroy();
+        sceneItems[itemName] = null
     }
     function addSceneItem(itemName, itemObject) {
 

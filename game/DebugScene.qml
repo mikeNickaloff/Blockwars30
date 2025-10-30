@@ -161,10 +161,120 @@ Engine.GameScene {
         gameScene: debugScene
 
 
+
         Component.onCompleted: {
 
         }
     }
+
+
+
+    Item {
+        width: 600
+        height: 600
+
+        Repeater {
+            model: 15
+            delegate: Rectangle {
+                required property var index
+                required property var model
+                PathInterpolator {
+
+                      id: motionPath
+                      progress: index / 15
+
+
+
+                      NumberAnimation on progress {
+
+                          from: index / 15
+                          to: 1.0
+                          running: true
+                          duration: 3000
+                          loops: NumberAnimation.Infinite
+                      }
+
+                      path: Path {
+                    startX: 100; startY: 100
+
+                    PathArc {
+                        x: 300; y: 300
+                        radiusX: 200 - (10 * index); radiusY: 200 - (10 * index)
+                        useLargeArc: true
+
+                    }
+                }
+                }
+
+                Component.onCompleted: {
+                   // motionPath.progressChanged.connect(delegate.updateProgress)
+                }
+                function updateProgress(new_prog) {
+                    /* motionPath.progress += 0.1
+                    if (motionPath.progress >= 1.0)  { motionPath.progress = 0 }
+                    delegate.x = motionPath.x
+                    delegate.y =motionPath.y */
+
+                }
+                id: delegate
+
+                color: Math.random() < 0.33 ? "red" : (Math.random() < 0.66) ? "blue" : "yellow"
+                x: motionPath.x
+                y: motionPath.y
+                Behavior on x { NumberAnimation { duration: 3000 } }
+                Behavior on y { NumberAnimation { duration: 3000 } }
+                width: height
+                height: 40
+                z: 20
+                transformOrigin: Item.Center
+
+            }
+
+
+            }
+
+
+    }
+
+
+    Item {
+        id: colorRing
+        width: 280
+        height: 280
+        anchors.centerIn: parent
+        property var colorChoices: ["red", "blue", "green", "yellow"]
+        property real angleOffset: 0
+        readonly property int itemCount: 15
+        readonly property real radius: Math.min(width, height) / 2 - 24
+
+        NumberAnimation on angleOffset {
+            from: 0
+            to: 2 * Math.PI
+            duration: 8000
+            loops: Animation.Infinite
+            easing.type: Easing.Linear
+            running: true
+        }
+
+        Repeater {
+            model: colorRing.itemCount
+            delegate: Rectangle {
+                readonly property real angle: (2 * Math.PI / colorRing.itemCount) * index + colorRing.angleOffset
+                readonly property color rectColor: colorRing.colorChoices[Math.floor(Math.random() * colorRing.colorChoices.length)]
+                width: 32
+                height: 32
+                color: rectColor
+                radius: 6
+                x: colorRing.width / 2 + colorRing.radius * Math.cos(angle) - width / 2
+                y: colorRing.height / 2 + colorRing.radius * Math.sin(angle) - height / 2
+            }
+        }
+    }
+
+
+
+
+
     Component {
             id: dragComp
             Engine.GameDragItem { }   // has required: gameScene, itemName, entry

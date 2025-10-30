@@ -31,6 +31,7 @@ Item {
     property alias blocksModel: blocksModel
     // Keep references if you want to reflow or mutate later
     property var instances: []
+    property int blockSequence: 0
 
     // Components for factory injection
     Component { id: dragComp;  Engine.GameDragItem { } }
@@ -49,6 +50,7 @@ Item {
         rows: 6
         columns: 6
         flow: Grid.TopToBottom
+        layoutDirection: Qt.RightToLeft
         move: Transition {
             NumberAnimation { properties: "x,y"; duration: 1000
             }
@@ -62,49 +64,60 @@ Item {
                 required property var index
                 property var rootObject: root
                 property var blocksModel: root.blocksModel
+                property string blockId: model.blockId
                 id: delegate
 
-                gameScene: debugScene
-                itemName: "block_dragItem_" + index
+                gameScene: root.gameScene
+                itemName: "block_dragItem_" + blockId
                 width: 64
                 height: 64
                 x: 0
                 y: 0
                 z: 4
 
-                entry:  redBlock
+                entry:  blockEntry
                 payload: ["itemName"]
-                property var myIndex: index
+                property int myIndex: index
+
+
+
+
+
 
                 UI.Block {
-                           id: redBlock
+                           id: blockEntry
                            blockColor: model.color
-                           itemName: "block_" + index
+                           itemName: delegate.blockId
                            gameScene: root.gameScene
                            width: 64
                            height: 64
+                           row: model.row
+                           column: model.column
+                           maxRows: root.gridRows
                            onBlockStateChanged: {
                                if (blockState == "destroyed") {
                                 delegate.entry.blockDestroyed(itemName);
                                }
-                           }
+
                        }
 
 
-                function transmitDestroyEntry(entryItemName) {
-                    rootObject.blocksModel.remove(delegate.myIndex, 1)
-                    rootObject.gameScene.removeSceneItem(delegate.itemName)
-                }
                 Component.onCompleted: {
                     delegate.rootObject.gameScene.addSceneDragItem(delegate.itemName, delegate);
-                    delegate.entry.blockDestroyed.connect(delegate.transmitDestroyEntry)
 
 
                 }
 
+                Text {
+
+
+                    id: debugText
+                    text: "" + index + ""
+                }
 
             }
         }
+    }
     }
 
     function getBlockEntryAt(row, column) {
@@ -125,11 +138,34 @@ Item {
     }
     function fillGrid() {
         console.log("Filling Grid Model", blocksModel);
-        const colors = ["red","blue","green","yellow"];
-        while (blocksModel.count < 36) {
-            var i = blocksModel.count;
-            blocksModel.append({ color: colors[i % colors.length] });
+        const colors = ["red", "blue", "green", "yellow"];
+
     }
+
+
+
+    function indexFor(row, column) {
+        if (row < 0 || column < 0)
+            return -1;
+        return (column * gridRows) + row;
+    }
+
+    function findModelIndexByItemName(blockId) {
+        for (var i = 0; i < blocksModel.count; i++) {
+            const element = blocksModel.get(i);
+            if (element.blockId === blockId)
+                return i;
+        }
+        return -1;
+    }
+
+    function findWrapperByItemName(blockId) {
+        for (var i = 0; i < blockRepeater.count; i++) {
+            const wrapper = blockRepeater.itemAt(i);
+            if (wrapper && wrapper.entry && wrapper.entry.itemName === blockId)
+                return wrapper;
+        }
+        return null;
     }
 
 }
