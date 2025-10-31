@@ -17,7 +17,7 @@ Item {
 
     signal queueItemStarted(var item)
     signal queueItemCompleted(var item, var context)
-
+    signal wrapperLaunched(var wrapperItem)
     // Grid configuration.
     property int gridCols: 6
     property int gridRows: 6
@@ -598,6 +598,8 @@ Item {
                     wrapper.entry.blockState = "launch";
                     if (wrapper.entry.itemName)
                         launched.push(wrapper.entry.itemName);
+                    wrapperLaunched(wrapper)
+
                 }
             }
         }
@@ -633,7 +635,7 @@ Item {
 
     Timer {
         id: deferredStateRetryTimer
-        interval: 25
+        interval: 325
         repeat: true
         running: false
         triggeredOnStart: false
