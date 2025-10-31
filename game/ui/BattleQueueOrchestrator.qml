@@ -1,6 +1,6 @@
 import QtQuick 2.15
 
-QtObject {
+Item {
     id: orchestrator
 
     property var owner: null
