@@ -42,6 +42,7 @@ QML_FILES
 QML_FILES game/ui/Hud.qml
 QML_FILES game/ui/PowerupCard.qml
 QML_FILES game/ui/PowerupCatalog.qml
+QML_FILES game/ui/GameStateMachine.qml
 QML_FILES game/ui/BattleGrid.qml
 QML_FILES game/ui/Block.qml
 QML_FILES
