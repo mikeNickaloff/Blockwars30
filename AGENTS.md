@@ -3,7 +3,12 @@
 - Each section of this document is a critical part of the system and cannot be overlooked.
 - DO NOT change the engine/* files unless asked to do so specifically by filename or with prior approval
 - Confirm any changes to engine/ as they will have large impacts
-- Don't flood qml files with functions. Use declarative style that focuses on Item creation where each Item type has only a few functions specific to just that kind of Item and inherit additional functions by sub-classing
+- Don't flood qml files with functions.
+- Use declarative style that focuses on Item type creation where each Item type has only a few functions specific to just that kind of Item 
+- inherit additional functions by creating Components (File.qml will become the equivalent of a C++ metatype inheriting from Component named File { } automatically if imported with ```import "relpath/to"```)
+- Using multiple layers of defined metatypes is the key to making robust fully-featured QML code.
+- Don't stack all functions into single file. 
+- Break down into multiple QML files that inherit from each other based on their functionality.
 
 # Agentic Data Storage and retrieval 
 - provides accurate data retrieval and storage about a project
@@ -30,8 +35,7 @@
 
 - chmod +x wheel.sh 
 
-- After making changes to WHEEL.db, use sqlite3 to dump the database to WHEEL.sql with the command
-``` sqlite3 WHEEL.db .dump > WHEEL.sql ```
+
 
 
 ### sqlite3 database tools for WHEEL.db 
@@ -40,14 +44,7 @@
 - You can choose to use this shortcut tool which provides access to WHEEL.db through a convenience shell script: ``` wheel.sh ```
 - Many common operations are already supported and relevant data can quickly be accessed.
 
-##### List all functions in the game/ui directory
-``` ./wheel.sh --relpath "game/ui" --type function ```
-
-##### Show all members from engine/Game*
-``` ./wheel.sh --relpath engine/Game --type member ```
-
-
-- There are many more use cases for wheel.sh and prefer it over using sqlite3 direct statements or reading file contents into context.
+- There are many more use cases for wheel.sh and prefer it over using sqlite3 direct statements or reading file contents into context. ``` ./wheel.sh --help```
 
 
 #### Uses
@@ -61,7 +58,11 @@
 - Before making any changes, create a new change row in WHEEL.db then add new rows for change_files and change_defs for each file / definition to be added.
 - Once finished with the change table, then use select commands with inner join to get list of all files and defs that need to be changed and create todo items based on that output.
 - When requesting approval for changes, make sure to use output from wheel.sh for providing data. do not rely on internal memory only.
+- After making changes to WHEEL.db, use sqlite3 to dump the database to WHEEL.sql with the command
+- Always update WHEEL.sql after making changes using ``` sqlite3 WHEEL.db .dump > WHEEL.sql ```
+
 - If sqlite3 not available on system, silently ignore this section.
+
 
 
 # GENERAL CODING SUGGESTIONS
