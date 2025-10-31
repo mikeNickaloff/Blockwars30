@@ -2,6 +2,7 @@ import QtQuick 2.15
 import "../../engine" as Engine
 import "../../lib" as Lib
 import "." as UI
+import "../data" as Data
 import "../factory.js" as Factory
 import "../layouts.js" as Layout
 import QtQuick.Layouts
@@ -62,7 +63,12 @@ Item {
         name: currentState,
         equals: function(value) {
             return root.normalizeStateName(value) === root.currentState;
-        }
+        },
+        evaluateTransitions: function() {
+            if (battleStateMachine)
+                battleStateMachine.evaluateTransitions();
+        },
+        machine: battleStateMachine
     })
 
     function normalizeStateName(value) {
@@ -119,10 +125,13 @@ Item {
     property var activeQueueItem: null
     property QtObject activeQueuePromise: null
     property QtObject initializationPromise: null
+    property QtObject battleStateMachine: null
 
-    UI.GameStateMachine {
-        id: gameStateCoordinator
-        battleGrid: root
+    Component {
+        id: battleStateMachineFactory
+        Data.BattleGridStateMachine {
+            battleGrid: root
+        }
     }
 
     signal queueItemStarted(var item)
@@ -131,7 +140,18 @@ Item {
     onCurrentStateChanged: handleCurrentStateChanged(currentState, previousState)
 
     Component.onCompleted: {
-        enqueueInitialStateBootstrap();
+        battleStateMachine = battleStateMachineFactory.createObject(root);
+        if (!battleStateMachine) {
+            console.warn("BattleGrid: Failed to instantiate BattleGridStateMachine");
+            return;
+        }
+
+        if (battleStateMachine.battleGrid !== root)
+            battleStateMachine.attachGrid(root);
+    }
+
+    Component.onDestruction: {
+        battleStateMachine = null;
     }
 
     Timer {
@@ -295,6 +315,11 @@ Item {
     }
 
     function enqueueInitialStateBootstrap() {
+        if (battleStateMachine) {
+            battleStateMachine.enqueueInitialStateBootstrap();
+            return;
+        }
+
         enqueueBattleEvent({
             name: "state-init",
             start_function: function(grid, item) {
@@ -308,6 +333,11 @@ Item {
     }
 
     function enqueueInitializationTransition() {
+        if (battleStateMachine) {
+            battleStateMachine.enqueueInitializationTransition();
+            return;
+        }
+
         enqueueBattleEvent({
             name: "state-initializing",
             start_function: function(grid, item) {
@@ -333,6 +363,11 @@ Item {
     }
 
     function enqueueInitializedState(payload) {
+        if (battleStateMachine) {
+            battleStateMachine.enqueueInitializedState(payload);
+            return;
+        }
+
         enqueueBattleEvent({
             name: "state-initialized",
             payload: payload,
