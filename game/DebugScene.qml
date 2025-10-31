@@ -166,7 +166,7 @@ Engine.GameScene {
                 var new_blocks = [];
                 console.log(battleGrid.currentState)
                 //if (battleGrid.currentState == "init") {
-                for (var i=0; i<16; i++) {
+                for (var i=0; i<17; i++) {
                     var r = Math.floor(Math.random() * 5);
                     var c = Math.floor(Math.random() * 5);
                     var blk = battleGrid.getBlockEntryAt(r,c)
@@ -193,12 +193,6 @@ Engine.GameScene {
 
         Component.onCompleted: {
 
-        }
-        onWrapperLaunched: function(wrapperItem) {
-               launchTimer.running = false
-            wrapperItem.animationDurationX = 60
-            wrapperItem.animationDurationY = 360
-            wrapperItem.y += 400
         }
     }
 

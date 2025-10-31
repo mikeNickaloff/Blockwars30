@@ -145,5 +145,10 @@ Item {
                 blockRoot.gameScene.addSceneDropItem(blockRoot.itemName + "_drop", blockRootDropItem);
             } (*/
         }
-
+        function startedMoving() {
+            if (blockRoot.blockState === "idle") { blockRoot.blockState = "moving" }
+        }
+        function stoppedMoving() {
+            if (blockRoot.blockState === "moving") { blockRoot.blockState = "idle" }
+        }
 }

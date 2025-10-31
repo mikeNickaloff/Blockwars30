@@ -24,6 +24,10 @@ AbstractGameItem {
     property bool animationEnabledX: true
     property bool animationEnabledY: true
 
+    signal startedMoving(var entry)
+    signal stoppedMoving(var entry)
+    property bool isMoving: false
+
 
 
     signal itemDragging(string itemName, real x, real y)
@@ -71,7 +75,15 @@ AbstractGameItem {
     Behavior on y {
         enabled: animationEnabledX
         ParallelAnimation {
-            NumberAnimation { duration: animationDurationY; easing.type: Easing.OutQuad }
+            SequentialAnimation {
+                ScriptAction {
+                    script: { startedMoving(entry); isMoving = true; }
+                }
+                NumberAnimation { duration: animationDurationY; easing.type: Easing.OutQuad }
+                    ScriptAction {
+                        script: { stoppedMoving(entry); isMoving = false; }
+                    }
+            }
             ScriptAction {
                 script: function() {
                     entry.y = dragItemRoot.y

@@ -118,8 +118,10 @@ Item {
                 if (!entry)
                     continue;
                 const blockState = normalizeStateName(entry.blockState);
-                if (blockState === "launch" || blockState === "explode")
+                if (blockState === "launch" || blockState === "explode" || blockState === "moving")
                     return true;
+
+
             }
         }
         return false;
@@ -471,6 +473,8 @@ Item {
                 instances.push(dragItem);
 
                 setWrapperAt(row, column, dragItem);
+                dragItem.startedMoving.connect(dragItem.entry.startedMoving)
+                dragItem.stoppedMoving.connect(dragItem.entry.stoppedMoving)
                 dragItem.y = pos.y;
             }
         }
