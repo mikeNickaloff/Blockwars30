@@ -38,6 +38,7 @@ Item {
     property string currentState: "init"
     property string previousState: ""
     property bool suppressStateHandler: false
+    property string deferredStateRequest: ""
 
     readonly property var stateList: [
         "init", "initializing", "initialized",
@@ -109,6 +110,47 @@ Item {
         };
     }
 
+    function hasActiveLaunchOrExplodeBlocks() {
+        ensureMatrix();
+        for (var row = 0; row < gridRows; ++row) {
+            for (var column = 0; column < gridCols; ++column) {
+                const entry = getBlockEntryAt(row, column);
+                if (!entry)
+                    continue;
+                const blockState = normalizeStateName(entry.blockState);
+                if (blockState === "launch" || blockState === "explode")
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    function deferStateTransition(baseState) {
+        const normalized = normalizeStateName(baseState);
+        if (!normalized)
+            return;
+        deferredStateRequest = normalized;
+        if (!deferredStateRetryTimer.running)
+            deferredStateRetryTimer.start();
+    }
+
+    function attemptDeferredStateTransition() {
+        if (!deferredStateRequest) {
+            if (deferredStateRetryTimer.running)
+                deferredStateRetryTimer.stop();
+            return;
+        }
+
+        if (hasActiveLaunchOrExplodeBlocks())
+            return;
+
+        const targetState = deferredStateRequest;
+        deferredStateRequest = "";
+        if (deferredStateRetryTimer.running)
+            deferredStateRetryTimer.stop();
+        requestState(targetState);
+    }
+
     function setGridStateInternal(stateName, suppressHandler) {
         const normalized = normalizeStateName(stateName);
         if (!normalized || currentState === normalized)
@@ -129,6 +171,14 @@ Item {
         const forms = stateFormsFor(baseState);
         if (!forms)
             return false;
+        if (hasActiveLaunchOrExplodeBlocks()) {
+            deferStateTransition(forms.base);
+            return true;
+        }
+        if (deferredStateRequest === forms.base)
+            deferredStateRequest = "";
+        if (deferredStateRetryTimer.running && !deferredStateRequest)
+            deferredStateRetryTimer.stop();
         const changed = setGridStateInternal(forms.base, false);
         if (!changed && currentState === forms.base)
             enqueueLifecycleForState(forms.base);
@@ -526,6 +576,15 @@ Item {
         onQueueItemCompleted: function(item, context) {
             root.queueItemCompleted(item, context);
         }
+    }
+
+    Timer {
+        id: deferredStateRetryTimer
+        interval: 250
+        repeat: true
+        running: false
+        triggeredOnStart: false
+        onTriggered: attemptDeferredStateTransition()
     }
 
     Component.onCompleted: {
