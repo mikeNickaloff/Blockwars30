@@ -44,6 +44,7 @@ QML_FILES game/ui/PowerupCard.qml
 QML_FILES game/ui/PowerupCatalog.qml
 QML_FILES game/data/BattleGridStateMachine.qml
 QML_FILES game/ui/BattleGrid.qml
+QML_FILES game/ui/BattleQueueOrchestrator.qml
 QML_FILES game/ui/Block.qml
 QML_FILES
 QML_FILES game/ui/GridCell.qml
