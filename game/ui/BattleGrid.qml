@@ -479,6 +479,145 @@ Item {
     }
 
 
+    function collectMatches() {
+        const collector = createMatchCollector();
+        collector.scan();
+        collector.applyMatches();
+        return collector.result();
+    }
+
+    function createMatchCollector() {
+        const matchedEntries = {};
+        const matchedRuns = [];
+
+        const orientationDescriptors = [
+            {
+                name: "horizontal",
+                primaryLimit: gridRows,
+                secondaryLimit: gridCols,
+                coordinateFor: function(primaryIndex, secondaryIndex) {
+                    return { row: primaryIndex, column: secondaryIndex };
+                }
+            },
+            {
+                name: "vertical",
+                primaryLimit: gridCols,
+                secondaryLimit: gridRows,
+                coordinateFor: function(primaryIndex, secondaryIndex) {
+                    return { row: secondaryIndex, column: primaryIndex };
+                }
+            }
+        ];
+
+        function registerRun(runEntries, orientation) {
+            if (!runEntries || runEntries.length < 3)
+                return;
+
+            const descriptor = {
+                orientation: orientation.name,
+                color: runEntries[0].color,
+                length: runEntries.length,
+                coordinates: []
+            };
+
+            for (var i = 0; i < runEntries.length; ++i) {
+                const record = runEntries[i];
+                const key = record.key;
+                matchedEntries[key] = record;
+                descriptor.coordinates.push({ row: record.row, column: record.column });
+            }
+
+            matchedRuns.push(descriptor);
+        }
+
+        function createEntryRecord(entry, row, column, color) {
+            const identifier = entry && entry.itemName ? entry.itemName : (row + ":" + column);
+            return {
+                key: identifier,
+                entry: entry,
+                row: row,
+                column: column,
+                color: color
+            };
+        }
+
+        function finalizeRun(activeRun, orientation) {
+            if (!activeRun || !activeRun.length)
+                return;
+            registerRun(activeRun, orientation);
+        }
+
+        function scanOrientation(orientation) {
+            for (var primary = 0; primary < orientation.primaryLimit; ++primary) {
+                var activeColor = null;
+                var activeRun = [];
+
+                for (var secondary = 0; secondary < orientation.secondaryLimit; ++secondary) {
+                    const coordinates = orientation.coordinateFor(primary, secondary);
+                    const entry = getBlockEntryAt(coordinates.row, coordinates.column);
+                    const color = entry && entry.blockColor ? entry.blockColor : null;
+                    const record = (entry && color)
+                            ? createEntryRecord(entry, coordinates.row, coordinates.column, color)
+                            : null;
+
+                    if (record && activeColor === record.color) {
+                        activeRun.push(record);
+                        continue;
+                    }
+
+                    finalizeRun(activeRun, orientation);
+                    activeRun = record ? [record] : [];
+                    activeColor = record ? record.color : null;
+                }
+
+                finalizeRun(activeRun, orientation);
+            }
+        }
+
+        return {
+            scan: function() {
+                for (var i = 0; i < orientationDescriptors.length; ++i)
+                    scanOrientation(orientationDescriptors[i]);
+            },
+            applyMatches: function() {
+                const keys = Object.keys(matchedEntries);
+                for (var i = 0; i < keys.length; ++i) {
+                    const record = matchedEntries[keys[i]];
+                    if (!record || !record.entry)
+                        continue;
+
+                    try {
+                        if (record.entry.blockState !== "matched")
+                            record.entry.blockState = "matched";
+                    } catch (err) {
+                        console.warn("BattleGrid: Failed to update block state for matched entry", err);
+                    }
+                }
+            },
+            result: function() {
+                const keys = Object.keys(matchedEntries);
+                const matchedList = [];
+                for (var i = 0; i < keys.length; ++i) {
+                    const record = matchedEntries[keys[i]];
+                    if (!record)
+                        continue;
+
+                    matchedList.push({
+                        itemName: record.entry && record.entry.itemName ? record.entry.itemName : record.key,
+                        row: record.row,
+                        column: record.column,
+                        color: record.color
+                    });
+                }
+
+                return {
+                    matches: matchedRuns.slice(),
+                    matchedEntries: matchedList
+                };
+            }
+        };
+    }
+
     function getBlockEntryAt(row, column) {
         if (row < 0 || row >= gridRows || column < 0 || column >= gridCols)
             return null;
