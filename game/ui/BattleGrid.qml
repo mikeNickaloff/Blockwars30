@@ -215,6 +215,8 @@ Item {
             forms: forms,
             action: stateAction,
             start_function: function(target) {
+                if (forms.base === "compact" && typeof target.purgeDestroyedBlocks === "function")
+                    target.purgeDestroyedBlocks();
                 target.setGridStateInternal(forms.active);
                 if (typeof stateAction.start === "function")
                     stateAction.start(target, forms);
@@ -346,6 +348,55 @@ Item {
         if (row < 0 || row >= gridRows || column < 0 || column >= gridCols)
             return;
         blockMatrix[row][column] = null;
+    }
+
+    function teardownWrapper(wrapper, location) {
+        if (!wrapper)
+            return false;
+
+        const resolved = (location && location.row !== undefined && location.column !== undefined)
+                ? location
+                : findWrapperPosition(wrapper);
+        if (resolved.row >= 0 && resolved.column >= 0)
+            clearWrapperAt(resolved.row, resolved.column);
+
+        const instanceIdx = instances.indexOf(wrapper);
+        if (instanceIdx !== -1)
+            instances.splice(instanceIdx, 1);
+
+        const blockEntry = wrapper.entry || null;
+        wrapper.entry = null;
+        if (blockEntry && typeof blockEntry.destroy === "function")
+            blockEntry.destroy();
+
+        if (typeof wrapper.destroy === "function")
+            wrapper.destroy();
+
+        return true;
+    }
+
+    function purgeDestroyedBlocks() {
+        ensureMatrix();
+        var destroyedWrappers = [];
+        for (var row = 0; row < gridRows; ++row) {
+            for (var column = 0; column < gridCols; ++column) {
+                const wrapper = blockMatrix[row][column];
+                if (!wrapper)
+                    continue;
+
+                const blockEntry = wrapper.entry || null;
+                const state = blockEntry && blockEntry.blockState ? normalizeStateName(blockEntry.blockState) : "";
+                if (state === "destroyed")
+                    destroyedWrappers.push({ wrapper: wrapper, row: row, column: column });
+            }
+        }
+
+        for (var idx = 0; idx < destroyedWrappers.length; ++idx) {
+            const record = destroyedWrappers[idx];
+            teardownWrapper(record.wrapper, { row: record.row, column: record.column });
+        }
+
+        return destroyedWrappers.length;
     }
 
     function getBlockWrapper(row, column) {

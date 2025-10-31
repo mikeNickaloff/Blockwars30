@@ -457,7 +457,7 @@ INSERT INTO defs VALUES(466,51,'member','activeQueueItem','Reference to the life
 INSERT INTO defs VALUES(467,51,'function','value','Normalizes incoming state tokens to lower-case strings for lookup in the triplet list.','normalizeStateName(value)');
 INSERT INTO defs VALUES(468,51,'function','stateValue','Returns the base/progressive/completed trio for the provided state token.','stateFormsFor(stateValue)');
 INSERT INTO defs VALUES(469,51,'function','baseState','Public entry point that normalizes a base state and sets currentState so the queue can enqueue the lifecycle.','requestState(baseState)');
-INSERT INTO defs VALUES(470,51,'function','baseState','Queues the lifecycle event for the requested base state unless it is already pending or active.','enqueueLifecycleForState(baseState)');
+INSERT INTO defs VALUES(470,51,'function','baseState','Queues the lifecycle event for the requested base state unless it is already pending or active, and ensures the compact lifecycle purges destroyed wrappers when it begins.','enqueueLifecycleForState(baseState)');
 INSERT INTO defs VALUES(471,51,'function','baseState','Checks the queue and current item to avoid enqueuing duplicate lifecycles.','isLifecycleQueued(baseState)');
 INSERT INTO defs VALUES(472,51,'function','eventObject','Pushes a lifecycle descriptor into the FIFO queue and kicks processing.','enqueueBattleEvent(eventObject)');
 INSERT INTO defs VALUES(473,51,'function','None','Executes the next queued lifecycle event, honoring promise results before proceeding.','processNextQueueItem()');
@@ -485,6 +485,8 @@ INSERT INTO defs VALUES(494,74,'function','table, options...','Shows table schem
 INSERT INTO defs VALUES(495,74,'function','change_id','Summarises a change id with related files, defs, and todo entries for planning.','command_plan(change_id)');
 INSERT INTO defs VALUES(496,74,'function','sql...','Runs arbitrary SQL snippets or drops into interactive sqlite3 when no SQL is given.','command_raw(sql...)');
 INSERT INTO defs VALUES(497,74,'function','argv...','Parses global switches, resolves subcommands, and routes execution accordingly.','main(argv...)');
+INSERT INTO defs VALUES(498,51,'function',NULL,'Removes the provided GameDragItem wrapper using optional precomputed coordinates before destroying both the wrapper and its block entry.','teardownWrapper(wrapper, location)');
+INSERT INTO defs VALUES(499,51,'function',NULL,'Scans the grid for wrappers whose entries are marked destroyed, tears them down via the helper, and returns the number of removals.','purgeDestroyedBlocks()');
 CREATE TABLE refs (
   id INTEGER PRIMARY KEY,
   def_id INTEGER NOT NULL,
@@ -524,6 +526,7 @@ INSERT INTO changes VALUES(23,'BattleGrid progressive state workflow','Implement
 INSERT INTO changes VALUES(24,'BattleGrid compact lifecycle','Wire compact state into queue processing so blocks collapse toward launch direction.','Complete');
 INSERT INTO changes VALUES(25,'BattleGrid queued state lifecycles','Recreate queue-driven base/progressive/completed state handling to avoid recursion and honor animations.','InProgress');
 INSERT INTO changes VALUES(26,'Enhance wheel.sh CLI','Add comprehensive CRUD operations and flexible queries for WHEEL.db automation','InProgress');
+INSERT INTO changes VALUES(27,'BattleGrid destroyed block cleanup','Remove destroyed block wrappers prior to compaction to avoid lingering references.','Complete');
 CREATE TABLE change_files (
   id INTEGER PRIMARY KEY,
   change_id INTEGER NOT NULL,
@@ -585,6 +588,7 @@ INSERT INTO change_files VALUES(51,23,73);
 INSERT INTO change_files VALUES(52,24,51);
 INSERT INTO change_files VALUES(53,25,51);
 INSERT INTO change_files VALUES(54,26,74);
+INSERT INTO change_files VALUES(55,27,51);
 CREATE TABLE change_defs (
   id INTEGER PRIMARY KEY,
   change_id INTEGER NOT NULL,
@@ -800,6 +804,9 @@ INSERT INTO change_defs VALUES(202,26,74,494,'Record describe subcommand for sch
 INSERT INTO change_defs VALUES(203,26,74,495,'Document change planning summary subcommand.');
 INSERT INTO change_defs VALUES(204,26,74,496,'Document raw SQL runner interface.');
 INSERT INTO change_defs VALUES(205,26,74,497,'Track main dispatcher for wheel.sh.');
+INSERT INTO change_defs VALUES(206,27,51,470,'Call destroyed block cleanup when compact lifecycle begins.');
+INSERT INTO change_defs VALUES(207,27,51,498,'Add teardownWrapper helper to centralize wrapper disposal.');
+INSERT INTO change_defs VALUES(208,27,51,499,'Introduce purgeDestroyedBlocks lifecycle cleanup before compaction.');
 CREATE TABLE todo (
   id INTEGER PRIMARY KEY,
   change_id INTEGER NOT NULL,
@@ -881,4 +888,8 @@ INSERT INTO todo VALUES(68,25,181,53,'Use isPromiseLike to await async lifecycle
 INSERT INTO todo VALUES(69,25,182,53,'Chain lifecycle completions to subsequent base states based on outcome.');
 INSERT INTO todo VALUES(70,25,183,53,'Implement findWrapperPosition to support moveWrapper without custom wrapper properties.');
 INSERT INTO todo VALUES(71,26,184,54,'Implement enhanced wheel.sh CLI with CRUD tooling and flexible queries.');
+INSERT INTO todo VALUES(72,27,206,NULL,'Wire compact lifecycle start to purge destroyed blocks.');
+INSERT INTO todo VALUES(73,27,207,NULL,'Create teardownWrapper helper that clears matrix, instances, and destroys entries.');
+INSERT INTO todo VALUES(74,27,208,NULL,'Implement purgeDestroyedBlocks iteration that invokes teardown helper.');
+INSERT INTO todo VALUES(75,27,NULL,55,'Update BattleGrid lifecycle cleanup for destroyed wrappers.');
 COMMIT;
