@@ -15,6 +15,9 @@ Item {
     // Scene reference supplied by the parent view.
     property var gameScene
 
+    signal queueItemStarted(var item)
+    signal queueItemCompleted(var item, var context)
+
     // Grid configuration.
     property int gridCols: 6
     property int gridRows: 6
@@ -48,9 +51,11 @@ Item {
     property var blockMatrix: []
 
     // Queue used to serialize lifecycle work.
-    property var battleQueue: []
-    property bool queueProcessing: false
-    property var activeQueueItem: null
+    property bool stateMachineManagedInitialization: false
+
+    property alias battleQueue: battleQueueController.queue
+    property alias queueProcessing: battleQueueController.processing
+    property alias activeQueueItem: battleQueueController.activeItem
 
     property var stateActions: ({
         init: {
@@ -200,69 +205,15 @@ Item {
         console.log("Enqueued battle event",JSON.stringify(eventObject))
         if (!eventObject)
             return;
-        battleQueue.push(eventObject);
-        processNextQueueItem();
+        battleQueueController.enqueue(eventObject);
     }
 
-    function processNextQueueItem() {
-
-        if (queueProcessing)
-            console.log("battle queue received request to process next item while queue processing another item");
-            return;
-        if (!battleQueue.length)
-            console.log("finished battle queue processing");
-            return;
-
-        activeQueueItem = battleQueue.shift();
-        queueProcessing = true;
-        console.log("processing battle event", JSON.stringify(activeQueueItem))
-
-        const item = activeQueueItem;
-        try {
-            if (typeof item.start_function === "function")
-                item.start_function(root, item);
-        } catch (err) {
-            console.warn("BattleGrid: lifecycle start error", err);
-        }
-
-        let mainResult;
-        let mainThrew = false;
-        try {
-            if (typeof item.main_function === "function")
-                mainResult = item.main_function(root, item);
-        } catch (err) {
-            mainThrew = true;
-            console.warn("BattleGrid: lifecycle main error", err);
-            mainResult = { error: err };
-        }
-
-        const settle = function(payload) {
-            const context = payload === undefined ? {} : payload;
-            try {
-                if (typeof item.end_function === "function")
-                    item.end_function(root, item, context);
-            } catch (err) {
-                console.warn("BattleGrid: lifecycle end error", err);
-            }
-
-            queueProcessing = false;
-            activeQueueItem = null;
-            processNextQueueItem();
-        };
-
-        if (!mainThrew && isPromiseLike(mainResult)) {
-            mainResult.then(function(value) {
-                settle({ result: value });
-            }, function(reason) {
-                settle({ error: reason });
-            });
-        } else {
-            settle(mainResult);
-        }
+    function deferActiveQueueItem() {
+        return battleQueueController.deferActiveItem();
     }
 
-    function isPromiseLike(value) {
-        return value && typeof value.then === "function";
+    function finishActiveQueueItem(context) {
+        battleQueueController.finishActiveItem(context);
     }
 
     function handleLifecycleCompleted(forms, context) {
@@ -564,6 +515,18 @@ Item {
 
     Component { id: dragComp; Engine.GameDragItem { } }
     Component { id: blockComp; UI.Block { } }
+
+    UI.BattleQueueOrchestrator {
+        id: battleQueueController
+        owner: root
+        tickInterval: 5
+        onQueueItemStarted: function(item) {
+            root.queueItemStarted(item);
+        }
+        onQueueItemCompleted: function(item, context) {
+            root.queueItemCompleted(item, context);
+        }
+    }
 
     Component.onCompleted: {
         requestState("init");
