@@ -1,9 +1,9 @@
+import QtQuick
 import QtQml 2.15
 
-QtObject {
-    id: gameStateMachineTemplate
 
-    QtObject {
+
+    Item {
         id: machine
 
         signal transitionToNewState(string previousState, string nextState)
@@ -73,7 +73,7 @@ QtObject {
             binding.reset()
         }
 
-        QtObject {
+        Item {
             id: binding
 
             property var contextObject: null
@@ -111,7 +111,7 @@ QtObject {
             }
         }
 
-        QtObject {
+        Item {
             id: registry
 
             property var stateStore: ({})
@@ -249,4 +249,4 @@ QtObject {
             }
         }
     }
-}
+

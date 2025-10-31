@@ -141,9 +141,9 @@ Item {
               height: 64
               opacity: 0
             }
-            Component.onCompleted: {
+         /*   Component.onCompleted: {
                 blockRoot.gameScene.addSceneDropItem(blockRoot.itemName + "_drop", blockRootDropItem);
-            }
+            } (*/
         }
 
 }

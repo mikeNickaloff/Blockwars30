@@ -3,6 +3,7 @@
 - Each section of this document is a critical part of the system and cannot be overlooked.
 - DO NOT change the engine/* files unless asked to do so specifically by filename or with prior approval
 - Confirm any changes to engine/ as they will have large impacts
+- Don't flood qml files with functions. Use declarative style that focuses on Item creation where each Item type has only a few functions specific to just that kind of Item and inherit additional functions by sub-classing
 
 # Agentic Data Storage and retrieval 
 - provides accurate data retrieval and storage about a project

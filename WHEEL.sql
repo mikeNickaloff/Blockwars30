@@ -393,7 +393,7 @@ INSERT INTO defs VALUES(355,53,'member','launchComponent','Grid row index metada
 INSERT INTO defs VALUES(356,53,'member','idleComponent','Grid column index metadata reserved for future gravity handling.','property Component idleComponent: blockIdleComponent');
 INSERT INTO defs VALUES(357,53,'member','explodeComponent','Maximum row count placeholder the block can use when repositioning.','property Component explodeComponent: blockExplodeComponent');
 INSERT INTO defs VALUES(358,53,'member','lowerBlockRefs','Reserved array for lower block references (currently unused).','property var lowerBlockRefs: []');
-INSERT INTO defs VALUES(359,51,'member','stateList','Ordered list of valid BattleGrid states exported for the reusable state machine to register.','readonly property var stateList: [');
+INSERT INTO defs VALUES(359,51,'member','stateList','Ordered list of valid BattleGrid states, grouped in base/progressive/completed triplets such as fill/filling/filled and check_turn/check_turning/check_turned.','readonly property var stateList: [');
 INSERT INTO defs VALUES(360,51,'member','currentState','Current BattleGrid state string mirrored by the engine state machine context binding.','property string currentState: "init"');
 INSERT INTO defs VALUES(361,51,'member','previousState','Tracks the previous state so state machine callbacks can reason about transitions.','property string previousState: ""');
 INSERT INTO defs VALUES(362,51,'member','stateTransitionInProgress','Guard set while queue-driven transitions are executing to avoid overlapping requests.','property bool stateTransitionInProgress: false');
@@ -420,12 +420,12 @@ INSERT INTO defs VALUES(382,51,'function','None','Dequeues the next item, wires 
 INSERT INTO defs VALUES(383,51,'member','initializationPromise','Promise object that resolves when initial powerup data arrives.','property QtObject initializationPromise: null');
 INSERT INTO defs VALUES(384,51,'function','None','Destroys any existing initialization promise before creating a new one.','resetInitializationPromise()');
 INSERT INTO defs VALUES(385,51,'function','None','Creates and stores a new initialization promise instance.','createInitializationPromise()');
-INSERT INTO defs VALUES(386,51,'function','newState, oldState','Routes state updates to the appropriate handlers, including machine-driven transitions.','handleCurrentStateChanged(newState, oldState)');
-INSERT INTO defs VALUES(387,51,'function','None','Queues the initialization state transition or delegates to the reusable state machine when available.','enqueueInitializationTransition()');
+INSERT INTO defs VALUES(386,51,'function','newState, oldState','Routes state updates to queue handlers, enqueueing the compact lifecycle when the compact state is requested.','handleCurrentStateChanged(newState, oldState)');
+INSERT INTO defs VALUES(387,51,'function','None','Fallback initializer that requests the init lifecycle and resolves the bootstrap promise when the state machine is absent.','enqueueInitializationTransition()');
 INSERT INTO defs VALUES(388,51,'function','powerupData','Resolves the initialization promise when base powerup data arrives so the machine can transition to initialized.','handleInitialPowerupDataLoaded(powerupData)');
-INSERT INTO defs VALUES(389,51,'function','None','Queues the initial state entry event or defers to the reusable state machine to do so.','enqueueInitialStateBootstrap()');
+INSERT INTO defs VALUES(389,51,'function','None','Queues the init/initializing/initialized lifecycle via enqueueStateTransition when no state machine is attached.','enqueueInitialStateBootstrap()');
 INSERT INTO defs VALUES(390,51,'function','value','Utility that detects promise-like objects returned from queue hooks.','isPromiseLike(value)');
-INSERT INTO defs VALUES(391,51,'function','payload','Queues the final initialization state event, optionally delegating to the reusable state machine implementation.','enqueueInitializedState(payload)');
+INSERT INTO defs VALUES(391,51,'function','payload','Fallback convenience that reuses enqueueStateTransition to publish initialization summaries without the state machine.','enqueueInitializedState(payload)');
 INSERT INTO defs VALUES(392,51,'member','battleQueue','Alias exposing the blocks ListModel so callers can append or read entries.','property var battleQueue: []');
 INSERT INTO defs VALUES(393,51,'member','queueProcessing','Palette of base block colors used when spawning default grid entries.','property bool queueProcessing: false');
 INSERT INTO defs VALUES(394,51,'member','activeQueueItem','Prefix applied when generating unique runtime identifiers for BattleGrid blocks.','property var activeQueueItem: null');
@@ -458,12 +458,31 @@ INSERT INTO defs VALUES(420,73,'function','newGrid','Binds the machine to a Batt
 INSERT INTO defs VALUES(421,73,'function','contextInstance','Predicate used by the engine machine to determine when to leave the init state.','function evaluateInitializationRequest(contextInstance)');
 INSERT INTO defs VALUES(422,73,'function','contextInstance','Predicate that confirms the initialization flow has produced a payload before switching to initialized.','function evaluateInitializationCompletion(contextInstance)');
 INSERT INTO defs VALUES(423,73,'function','None','Asks the underlying engine state machine to re-run transition predicates once prerequisites are met.','function evaluateTransitions()');
-INSERT INTO defs VALUES(424,73,'function','None','Queues the event that moves the grid into the init state via the battle event queue.','function enqueueInitialStateBootstrap()');
-INSERT INTO defs VALUES(425,73,'function','None','Queues the initialization event, creating the promise the grid will resolve when data arrives.','function enqueueInitializationTransition()');
-INSERT INTO defs VALUES(426,73,'function','payload','Queues the final initialization event that settles the grid into the initialized state.','function enqueueInitializedState(payload)');
-INSERT INTO defs VALUES(427,73,'function','previousState, nextState','Responds to engine state machine transitions by queuing appropriate battle grid events.','function handleTransition(previousState, nextState)');
-INSERT INTO defs VALUES(428,73,'function','queueItem, completionContext','Processes completed queue items to update machine flags and retrigger transition evaluation.','function handleQueueItemCompletion(queueItem, completionContext)');
+INSERT INTO defs VALUES(424,73,'function','None','Schedules the init lifecycle through enqueueManagedState with bootstrap metadata.','function enqueueInitialStateBootstrap()');
+INSERT INTO defs VALUES(425,73,'function','None','Convenience wrapper that reuses enqueueManagedState for initialization-triggered init lifecycle runs.','function enqueueInitializationTransition()');
+INSERT INTO defs VALUES(426,73,'function','payload','Queues the init lifecycle with a precomputed summary so downstream handlers learn initialization payloads.','function enqueueInitializedState(payload)');
+INSERT INTO defs VALUES(427,73,'function','previousState, nextState','Responds to base state transitions by delegating to enqueueManagedState when the request was external.','function handleTransition(previousState, nextState)');
+INSERT INTO defs VALUES(428,73,'function','queueItem, completionContext','Routes queue completion payloads through handleCompletedState for chained lifecycle evaluation.','function handleQueueItemCompletion(queueItem, completionContext)');
 INSERT INTO defs VALUES(429,73,'function','fromState, toState, metadata','Resets guards after state changes and schedules additional evaluations as needed.','function handleStateTransitionFinished(fromState, toState, metadata)');
+INSERT INTO defs VALUES(430,51,'function','stateValue','Returns the base/progressive/completed triplet for a given state token using the configured state list.','stateFormsFor(stateValue)');
+INSERT INTO defs VALUES(431,51,'function','baseState, lifecycleOptions','Sets the grid to the requested base state and enqueues a queued lifecycle that advances to progressive and completed forms.','enqueueStateTransition(baseState, lifecycleOptions)');
+INSERT INTO defs VALUES(432,51,'function','blockStateName','Returns true when any repeater entry currently reports the requested block state.','hasBlocksInState(blockStateName)');
+INSERT INTO defs VALUES(433,51,'function','None','Placeholder hook that will gather match summaries; currently returns an empty matches array.','collectMatches()');
+INSERT INTO defs VALUES(434,51,'function','None','Scans blocks flagged as matched, switches them to launch state, and returns the launched identifiers.','launchMatchedBlocks()');
+INSERT INTO defs VALUES(435,51,'function','None','Stub turn-evaluation routine that returns remaining moves metadata until real turn logic is wired in.','evaluateActiveTurn()');
+INSERT INTO defs VALUES(436,73,'function','source','Creates a shallow copy of the provided object so lifecycle metadata can be merged safely.','cloneSimple(source)');
+INSERT INTO defs VALUES(437,73,'function','baseState, baseOptions, overrides','Merges default and override lifecycle handlers while stamping metadata about the owning state.','extendLifecycleOptions(baseState, baseOptions, overrides)');
+INSERT INTO defs VALUES(438,73,'function','None','Builds the default lifecycle handler map for init, fill, match, launch, and check_turn transitions.','createDefaultStateActions()');
+INSERT INTO defs VALUES(439,73,'function','stateName, overrideOptions','Requests the grid to enqueue the lifecycle for the referenced state while suppressing recursive transition handling.','enqueueManagedState(stateName, overrideOptions)');
+INSERT INTO defs VALUES(440,73,'function','completionContext','Interprets queue completion payloads to queue follow-up states like fill, match, launch, or check_turn.','handleCompletedState(completionContext)');
+INSERT INTO defs VALUES(441,51,'property','launchDirection','Controls whether compacting pushes survivors up or down before new blocks are spawned.','property string launchDirection: down');
+INSERT INTO defs VALUES(442,51,'function','value','Normalizes a supplied launchDirection token to either "up" or the default "down".','normalizeLaunchDirection(value)');
+INSERT INTO defs VALUES(443,51,'function','metadata','Queues the compact lifecycle, driving compaction and chaining spawn animations for any newly generated blocks.','enqueueCompactLifecycle(metadata)');
+INSERT INTO defs VALUES(444,51,'function','explicitDirection','Rebuilds each column after matches by sliding survivors, spawning replacements, and returning a manifest for follow-up animations.','performCompaction(explicitDirection)');
+INSERT INTO defs VALUES(445,51,'function','entry','Creates a shallow copy of a ListModel entry so compaction can mutate coordinates without referencing the original map.','cloneModelEntry(entry)');
+INSERT INTO defs VALUES(446,51,'function','spawnList, direction','Creates a batch of spawn queue events so newly generated blocks animate from offscreen into place.','enqueueSpawnAnimations(spawnList, direction)');
+INSERT INTO defs VALUES(447,51,'function','spawnDescriptor, direction','Queues a single spawn animation event that offsets the wrapper, animates it into position, and resolves when motion completes.','enqueueSpawnAnimation(spawnDescriptor, direction)');
+INSERT INTO defs VALUES(448,51,'function','None','Calculates the travel distance used when spawning blocks offscreen before animating them into the grid.','spawnOffsetMagnitude()');
 CREATE TABLE refs (
   id INTEGER PRIMARY KEY,
   def_id INTEGER NOT NULL,
@@ -499,6 +518,8 @@ INSERT INTO changes VALUES(19,'BattleGrid destruction cascade','Add dependency w
 INSERT INTO changes VALUES(20,'Resync metadata after manual revert','User reverted prior battle grid automation; update WHEEL listings to match current code.','Complete');
 INSERT INTO changes VALUES(21,'Add BattleGrid state machine scaffold','Provide state tracking API and signals in BattleGrid for upcoming queue integration.','Complete');
 INSERT INTO changes VALUES(22,'Refactor state machines for battle grid','Rename and refactor GameStateMachine integration','Complete');
+INSERT INTO changes VALUES(23,'BattleGrid progressive state workflow','Implement queued progressive/past state handling and extend state machine orchestration.','InProgress');
+INSERT INTO changes VALUES(24,'BattleGrid compact lifecycle','Wire compact state into queue processing so blocks collapse toward launch direction.','InProgress');
 CREATE TABLE change_files (
   id INTEGER PRIMARY KEY,
   change_id INTEGER NOT NULL,
@@ -555,6 +576,9 @@ INSERT INTO change_files VALUES(46,21,51);
 INSERT INTO change_files VALUES(47,22,72);
 INSERT INTO change_files VALUES(48,22,51);
 INSERT INTO change_files VALUES(49,22,73);
+INSERT INTO change_files VALUES(50,23,51);
+INSERT INTO change_files VALUES(51,23,73);
+INSERT INTO change_files VALUES(52,24,51);
 CREATE TABLE change_defs (
   id INTEGER PRIMARY KEY,
   change_id INTEGER NOT NULL,
@@ -706,6 +730,35 @@ INSERT INTO change_defs VALUES(138,22,73,420,'Implement attachGrid/resetRuntimeF
 INSERT INTO change_defs VALUES(139,22,73,421,'Define topology transitions and evaluation handlers for initialization flow');
 INSERT INTO change_defs VALUES(140,22,73,427,'Forward transition signals into BattleGrid event queue');
 INSERT INTO change_defs VALUES(141,22,73,417,'Provide Connections to BattleGrid transition lifecycle callbacks');
+INSERT INTO change_defs VALUES(142,23,51,389,'Refactor init bootstrap queue to use new progressive state helper.');
+INSERT INTO change_defs VALUES(143,23,51,387,'Rework initialization transition handler to integrate progressive lifecycle.');
+INSERT INTO change_defs VALUES(144,23,51,391,'Adjust initialized state queue completion to align with shared helper.');
+INSERT INTO change_defs VALUES(145,23,51,430,'Add helper to derive base/progressive/completed state forms from stateList.');
+INSERT INTO change_defs VALUES(146,23,51,431,'Introduce generic enqueueStateTransition helper to orchestrate queued lifecycle transitions.');
+INSERT INTO change_defs VALUES(147,23,51,432,'Provide hasBlocksInState utility for state machine queries.');
+INSERT INTO change_defs VALUES(148,23,51,433,'Stub collectMatches routine returning structured match summaries.');
+INSERT INTO change_defs VALUES(149,23,51,434,'Add launchMatchedBlocks placeholder invoked by launch state.');
+INSERT INTO change_defs VALUES(150,23,51,435,'Add evaluateActiveTurn placeholder for check_turn logic.');
+INSERT INTO change_defs VALUES(151,23,73,428,'Handle queue completion payloads to trigger chained state requests.');
+INSERT INTO change_defs VALUES(152,23,73,427,'Route engine transitions through managed enqueueStateTransition helper.');
+INSERT INTO change_defs VALUES(153,23,73,424,'Delegate bootstrap sequence to managed state action infrastructure.');
+INSERT INTO change_defs VALUES(154,23,73,425,'Convert initialization transition to progressive lifecycle helper usage.');
+INSERT INTO change_defs VALUES(155,23,73,426,'Rewrite initialized state queuing to rely on shared progressive helper.');
+INSERT INTO change_defs VALUES(156,23,73,439,'Add enqueueManagedState helper wiring state machine to grid lifecycle.');
+INSERT INTO change_defs VALUES(157,23,73,438,'Define default state action library bridging fill/match/launch/check_turn behavior.');
+INSERT INTO change_defs VALUES(158,23,73,440,'Add handleCompletedState to evaluate post-transition routing.');
+INSERT INTO change_defs VALUES(159,23,51,359,'Extend stateList to include check_turn progressive forms.');
+INSERT INTO change_defs VALUES(160,23,73,436,'Introduce cloneSimple helper to copy metadata maps before merging overrides.');
+INSERT INTO change_defs VALUES(161,23,73,437,'Add extendLifecycleOptions to merge default and override lifecycle handlers.');
+INSERT INTO change_defs VALUES(162,24,51,386,'Handle compact state transitions by enqueueing lifecycle events.');
+INSERT INTO change_defs VALUES(163,24,51,443,'Introduce enqueueCompactLifecycle to wrap queue event configuration for compact state.');
+INSERT INTO change_defs VALUES(164,24,51,444,'Add performCompaction helper to rebuild grid columns based on launchDirection.');
+INSERT INTO change_defs VALUES(165,24,51,442,'Provide normalizeLaunchDirection utility for consistent direction handling.');
+INSERT INTO change_defs VALUES(166,24,51,441,'Expose launchDirection property so compact logic knows which way to collapse.');
+INSERT INTO change_defs VALUES(167,24,51,445,'Add cloneModelEntry utility to duplicate ListModel rows safely during compaction.');
+INSERT INTO change_defs VALUES(168,24,51,446,'Batch spawn animations so new blocks enter via the queue.');
+INSERT INTO change_defs VALUES(169,24,51,447,'Add single-block spawn queue event that animates new wrappers from offscreen.');
+INSERT INTO change_defs VALUES(170,24,51,448,'Expose spawnOffsetMagnitude helper so animations know how far to travel.');
 CREATE TABLE todo (
   id INTEGER PRIMARY KEY,
   change_id INTEGER NOT NULL,
@@ -744,4 +797,33 @@ INSERT INTO todo VALUES(25,22,138,49,'Implement attach/reset helper functions');
 INSERT INTO todo VALUES(26,22,139,49,'Create topology and evaluation handlers');
 INSERT INTO todo VALUES(27,22,140,49,'Forward machine transitions into event queue');
 INSERT INTO todo VALUES(28,22,141,49,'Connect BattleGrid lifecycle signals to machine');
+INSERT INTO todo VALUES(29,23,142,50,'Refactor BattleGrid init bootstrap to progressive helper.');
+INSERT INTO todo VALUES(30,23,143,50,'Update initialization transition to use new queue lifecycle.');
+INSERT INTO todo VALUES(31,23,144,50,'Align initialized state queue completion with helper payload.');
+INSERT INTO todo VALUES(32,23,145,50,'Implement state triplet resolver on BattleGrid.');
+INSERT INTO todo VALUES(33,23,146,50,'Add enqueueStateTransition helper bridging queue lifecycle.');
+INSERT INTO todo VALUES(34,23,147,50,'Expose hasBlocksInState utility for block state lookups.');
+INSERT INTO todo VALUES(35,23,148,50,'Stub collectMatches implementation returning structured result.');
+INSERT INTO todo VALUES(36,23,149,50,'Add launchMatchedBlocks placeholder invoked by launch state.');
+INSERT INTO todo VALUES(37,23,150,50,'Create evaluateActiveTurn stub for check_turn evaluation.');
+INSERT INTO todo VALUES(38,23,151,51,'Handle queue completion payload to drive chained state requests.');
+INSERT INTO todo VALUES(39,23,152,51,'Ensure transition handler routes through managed state enqueuing.');
+INSERT INTO todo VALUES(40,23,153,51,'Refactor bootstrap helper to invoke enqueueManagedState.');
+INSERT INTO todo VALUES(41,23,154,51,'Adapt initialization transition helper to shared lifecycle.');
+INSERT INTO todo VALUES(42,23,155,51,'Update initialized state queue wrapper for progressive helper usage.');
+INSERT INTO todo VALUES(43,23,156,51,'Implement enqueueManagedState helper bridging machine and grid.');
+INSERT INTO todo VALUES(44,23,157,51,'Define default state action library for fill/match/launch/check_turn.');
+INSERT INTO todo VALUES(45,23,158,51,'Add handleCompletedState to analyze finished lifecycles and queue next state.');
+INSERT INTO todo VALUES(46,23,159,50,'Extend BattleGrid stateList with check_turn entries.');
+INSERT INTO todo VALUES(47,23,160,51,'Add cloneSimple helper for lifecycle metadata copies.');
+INSERT INTO todo VALUES(48,23,161,51,'Implement extendLifecycleOptions merger for state lifecycles.');
+INSERT INTO todo VALUES(49,24,162,52,'Extend handleCurrentStateChanged to enqueue compact lifecycle when state changes to compact.');
+INSERT INTO todo VALUES(50,24,163,52,'Implement enqueueCompactLifecycle to push compact event into battle queue.');
+INSERT INTO todo VALUES(51,24,164,52,'Write performCompaction to rebuild columns using launchDirection and refresh blocksModel.');
+INSERT INTO todo VALUES(52,24,165,52,'Add normalizeLaunchDirection helper to sanitize user-provided direction.');
+INSERT INTO todo VALUES(53,24,166,52,'Add launchDirection property to BattleGrid and document behavior.');
+INSERT INTO todo VALUES(54,24,167,52,'Implement cloneModelEntry helper so compaction can reuse entry data safely.');
+INSERT INTO todo VALUES(55,24,168,52,'Enqueue spawn animations after compaction so new blocks animate from offscreen.');
+INSERT INTO todo VALUES(56,24,169,52,'Implement single-block spawn queue event with offset start and animated finish.');
+INSERT INTO todo VALUES(57,24,170,52,'Provide spawnOffsetMagnitude helper used by spawn animations.');
 COMMIT;

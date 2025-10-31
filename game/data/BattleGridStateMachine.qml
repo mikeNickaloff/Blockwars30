@@ -293,9 +293,10 @@ Engine.GameStateMachine {
             machine.attachGrid(machine.battleGrid)
     }
 
-    onObjectCreated: function(object) {
+    Component.onCompleted: function(object) {
         if (!object)
             return
+
         configureMachine(object)
     }
 }
