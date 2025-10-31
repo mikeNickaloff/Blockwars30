@@ -450,7 +450,7 @@ Item {
                                 width: cellW,
                                 height: cellH,
                                 x: pos.x,
-                                y: pos.y,
+                                y: pos.y - (cellH * 6),
                                 blockProps: {
                                     row: row,
                                     column: column,
@@ -461,7 +461,7 @@ Item {
                                     width: cellW,
                                     height: cellH,
                                     x: pos.x,
-                                    y: pos.y
+                                    y: pos.y - (cellH * 6)
                                 }
                             });
 
@@ -469,7 +469,9 @@ Item {
                     continue;
 
                 instances.push(dragItem);
+
                 setWrapperAt(row, column, dragItem);
+                dragItem.y = pos.y;
             }
         }
     }
@@ -631,7 +633,7 @@ Item {
 
     Timer {
         id: deferredStateRetryTimer
-        interval: 250
+        interval: 25
         repeat: true
         running: false
         triggeredOnStart: false

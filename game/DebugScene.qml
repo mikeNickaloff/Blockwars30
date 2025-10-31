@@ -167,8 +167,10 @@ Engine.GameScene {
                 console.log(battleGrid.currentState)
                 //if (battleGrid.currentState == "init") {
                 for (var i=0; i<8; i++) {
-                    var blk = battleGrid.getBlockEntryAt(((i * 2) % 6), Math.floor((i * 2) / 6))
-                    var wrapper = battleGrid.getBlockWrapper(((i * 2) % 6), Math.floor((i * 2) / 6))
+                    var r = Math.floor(Math.random() * 5);
+                    var c = Math.floor(Math.random() * 5);
+                    var blk = battleGrid.getBlockEntryAt(r,c)
+                    var wrapper = battleGrid.getBlockWrapper(r, c)
                     wrapper.animationDurationX = 60
                     wrapper.animationDurationY = 360
 
@@ -187,7 +189,7 @@ Engine.GameScene {
         y: 200
         gameScene: debugScene
 
-
+        launchDirection: "up"
 
         Component.onCompleted: {
 
