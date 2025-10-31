@@ -1,223 +1,689 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# wheel_db.sh — dynamic query runner for WHEEL.db with robust parameter fallback
-# Tables:
-#   files(id, relpath, description)
-#   defs(id, file_id, type, parameters, description)
-#   refs(id, def_id, reference_def_id)
-#   changes(id, title, context, status)
-#   change_files(id, change_id, file_id)
-#   change_defs(id, change_id, file_id, def_id, description)
-#   todo(id, change_id, change_defs_id, change_files_id, change_defs_id, description)
+PROG="${0##*/}"
+DB_PATH="WHEEL.db"
+PARAM_PREF="auto"
+PARAM_STATE=""
+VERBOSE=0
 
 usage() {
   cat <<'USAGE'
 Usage:
-  wheel_db.sh [--database PATH] [--type STR] [--relpath STR] [--signature STR] [--parameters STR] [--description STR]
-              [--file-desc STR] [--order-by SQL] [--limit N]
-              [--refers-to DEF_ID] [--referenced-by DEF_ID] [--change CHANGE_ID]
-              [--raw-sql] [--count] [--distinct]
-              [--force-params | --no-params] [--verbose]
+  wheel.sh [GLOBAL OPTIONS] query    [QUERY OPTIONS]
+  wheel.sh [GLOBAL OPTIONS] search   [TERMS...] [--table TABLE] [query opts]
+  wheel.sh [GLOBAL OPTIONS] insert   TABLE key=value [...]
+  wheel.sh [GLOBAL OPTIONS] update   TABLE --set col=value [--set col=value ...] [--id ID | --where SQL]
+  wheel.sh [GLOBAL OPTIONS] delete   TABLE [--id ID | --where SQL]
+  wheel.sh [GLOBAL OPTIONS] describe TABLE [--id ID] [--schema]
+  wheel.sh [GLOBAL OPTIONS] plan     CHANGE_ID
+  wheel.sh [GLOBAL OPTIONS] raw      [SQL]
+
+Global options:
+  --database PATH     Use the given SQLite database (default WHEEL.db)
+  --force-params      Force use of sqlite3 .parameter bindings where supported
+  --no-params         Disable use of sqlite3 .parameter bindings
+  --verbose           Emit debug logging to stderr
+  -h, --help          Show this message
 
 Notes:
-  • All string filters use LIKE. If you don't include % or _, they are wrapped as %...%.
-  • Shortcuts add JOINs:
-      --refers-to X      -> defs that reference def X (refs.def_id -> refs.reference_def_id)
-      --referenced-by X  -> defs referenced by X (inverse)
-      --change C         -> rows tied to change C (via change_files/change_defs)
-  • --count returns COUNT(*) instead of detail columns.
-  • --distinct makes SELECT DISTINCT.
-  • --raw-sql prints final SQL (and param sets if used).
-  • If your sqlite3 CLI trips over ".parameter", we fall back to literal-quoting safely.
+  • Invoking wheel.sh with only legacy query flags still works (query mode is default).
+  • LIKE filters wrap values in %...% unless you provide %/_ yourself.
+  • `search` spreads the terms across the most relevant columns for each table.
+  • `raw` with no SQL launches an interactive sqlite3 shell.
 USAGE
 }
 
-# Defaults
-DB_PATH="WHEEL.db"
-TYPE_FILTER=""; RELPATH_FILTER=""; SIGNATURE_FILTER=""; PARAMS_FILTER=""; DESC_FILTER=""; FILE_DESC_FILTER=""
-ORDER_BY="files.relpath, defs.type, defs.signature"
-LIMIT_VAL=""
-REFERS_TO=""; REFERENCED_BY=""; CHANGE_ID=""
-RAW_SQL=0; DO_COUNT=0; DO_DISTINCT=0; VERBOSE=0
-FORCE_PARAMS=0; NO_PARAMS=0
+fatal() { echo "$PROG: $*" >&2; exit 1; }
 
-# Arg parse
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --database)       DB_PATH="${2:?}"; shift 2;;
-    --type)           TYPE_FILTER="${2:?}"; shift 2;;
-    --relpath)        RELPATH_FILTER="${2:?}"; shift 2;;
-    --signature)      SIGNATURE_FILTER="${2:?}"; shift 2;;
-    --parameters)     PARAMS_FILTER="${2:?}"; shift 2;;
-    --description)    DESC_FILTER="${2:?}"; shift 2;;
-    --file-desc)      FILE_DESC_FILTER="${2:?}"; shift 2;;
-    --order-by)       ORDER_BY="${2:?}"; shift 2;;
-    --limit)          LIMIT_VAL="${2:?}"; shift 2;;
-    --refers-to)      REFERS_TO="${2:?}"; shift 2;;
-    --referenced-by)  REFERENCED_BY="${2:?}"; shift 2;;
-    --change)         CHANGE_ID="${2:?}"; shift 2;;
-    --raw-sql)        RAW_SQL=1; shift;;
-    --count)          DO_COUNT=1; shift;;
-    --distinct)       DO_DISTINCT=1; shift;;
-    --force-params)   FORCE_PARAMS=1; shift;;
-    --no-params)      NO_PARAMS=1; shift;;
-    --verbose)        VERBOSE=1; shift;;
-    -h|--help)        usage; exit 0;;
-    *) echo "Unknown arg: $1" >&2; usage; exit 2;;
-  esac
-done
-
-[[ -f "$DB_PATH" ]] || { echo "Error: database not found: $DB_PATH" >&2; exit 1; }
-
-# Helpers
-like_wrap() {
-  local v="$1"
-  if [[ "$v" == *"%"* || "$v" == *"_"* ]]; then printf '%s' "$v"; else printf '%%%s%%' "$v"; fi
+debug() {
+  if [[ $VERBOSE -eq 1 ]]; then
+    echo "[$PROG] $*" >&2
+  fi
 }
+
+ensure_db() {
+  [[ -f "$DB_PATH" ]] || fatal "database not found: $DB_PATH"
+}
+
 sql_quote() {
-  # Safe single-quote for SQLite string literal
   local v="$1"
   printf "'%s'" "${v//\'/\'\'}"
 }
 
-# Probe whether .parameter actually works (unless overridden)
-PARAM_MODE="auto"
-if [[ $FORCE_PARAMS -eq 1 && $NO_PARAMS -eq 1 ]]; then
-  echo "Error: choose either --force-params or --no-params, not both." >&2; exit 2
-fi
-if [[ $NO_PARAMS -eq 1 ]]; then
-  PARAM_MODE="off"
-elif [[ $FORCE_PARAMS -eq 1 ]]; then
-  PARAM_MODE="on"
-else
-  # Try to run a tiny param query. If it prints "X", we’re good.
-  if out="$(sqlite3 "$DB_PATH" ".parameter init\n.parameter set @p 'X'\nselect @p;" 2>/dev/null)" && [[ "$out" == "X" ]]; then
-    PARAM_MODE="on"
+wrap_like() {
+  local v="$1"
+  if [[ "$v" == *%* || "$v" == *_* ]]; then
+    printf '%s' "$v"
   else
-    PARAM_MODE="off"
-  fi
-fi
-[[ $VERBOSE -eq 1 ]] && echo "[debug] parameter mode: $PARAM_MODE" >&2
-
-# Build SELECT
-SELECT_LIST="files.relpath, defs.type, defs.signature, defs.parameters, defs.description"
-[[ "$DO_COUNT" -eq 1 ]] && SELECT_LIST="COUNT(*)"
-[[ "$DO_DISTINCT" -eq 1 ]] && SELECT_LIST="DISTINCT $SELECT_LIST"
-
-FROM_JOIN=$'FROM files\nJOIN defs ON files.id = defs.file_id\n'
-WHERE_CLAUSES=()
-
-# Optional joins based on shortcuts
-if [[ -n "$REFERS_TO" && -n "$REFERENCED_BY" ]]; then
-  echo "Error: use either --refers-to or --referenced-by, not both." >&2; exit 2
-fi
-if [[ -n "$REFERS_TO" ]]; then
-  FROM_JOIN+=$'JOIN refs rft ON rft.def_id = defs.id\n'
-fi
-if [[ -n "$REFERENCED_BY" ]]; then
-  FROM_JOIN+=$'JOIN refs rby ON rby.reference_def_id = defs.id\n'
-fi
-if [[ -n "$CHANGE_ID" ]]; then
-  FROM_JOIN+=$'LEFT JOIN change_files cf ON cf.file_id = files.id\nLEFT JOIN change_defs cd ON cd.def_id = defs.id\n'
-fi
-
-# Assemble WHERE using either parameters or literal quoting
-PARAM_PRELUDE=""
-add_like() {
-  # args: column value param_name
-  local col="$1" raw="$2" pname="$3"
-  local val; val="$(like_wrap "$raw")"
-  if [[ "$PARAM_MODE" == "on" ]]; then
-    PARAM_PRELUDE+=".$(printf "parameter set %s '%s'\n" "$pname" "${val//\'/\'\'}")"
-    WHERE_CLAUSES+=("$col LIKE $pname")
-  else
-    WHERE_CLAUSES+=("$col LIKE $(sql_quote "$val")")
+    printf '%%%s%%' "$v"
   fi
 }
 
-[[ -n "$TYPE_FILTER"      ]] && add_like "defs.type"        "$TYPE_FILTER"      "@p_type"
-[[ -n "$RELPATH_FILTER"   ]] && add_like "files.relpath"    "$RELPATH_FILTER"   "@p_relpath"
-[[ -n "$SIGNATURE_FILTER" ]] && add_like "defs.signature"   "$SIGNATURE_FILTER"   "@p_signature"
-[[ -n "$PARAMS_FILTER"    ]] && add_like "defs.parameters"  "$PARAMS_FILTER"    "@p_params"
-[[ -n "$DESC_FILTER"      ]] && add_like "defs.description" "$DESC_FILTER"      "@p_desc"
-[[ -n "$FILE_DESC_FILTER" ]] && add_like "files.description" "$FILE_DESC_FILTER" "@p_fdesc"
+sanitize_identifier() {
+  local ident="$1"
+  [[ "$ident" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || fatal "invalid identifier: $ident"
+  printf '%s' "$ident"
+}
 
-# Add numeric equals for shortcuts
-if [[ -n "$REFERS_TO" ]]; then
-  if [[ "$PARAM_MODE" == "on" ]]; then
-    PARAM_PRELUDE+=".$(printf "parameter set @p_refers_to %s\n" "$REFERS_TO")"
-    WHERE_CLAUSES+=("rft.reference_def_id = @p_refers_to")
+sanitize_column_ref() {
+  local ref="$1"
+  if [[ "$ref" == *.* ]]; then
+    local lhs="${ref%%.*}"
+    local rhs="${ref#*.}"
+    sanitize_identifier "$lhs" >/dev/null
+    sanitize_identifier "$rhs" >/dev/null
+    printf '%s' "$lhs.$rhs"
   else
-    WHERE_CLAUSES+=("rft.reference_def_id = $REFERS_TO")
+    sanitize_identifier "$ref"
   fi
-fi
-if [[ -n "$REFERENCED_BY" ]]; then
-  if [[ "$PARAM_MODE" == "on" ]]; then
-    PARAM_PRELUDE+=".$(printf "parameter set @p_referenced_by %s\n" "$REFERENCED_BY")"
-    WHERE_CLAUSES+=("rby.def_id = @p_referenced_by")
+}
+
+init_param_mode() {
+  if [[ -n "$PARAM_STATE" ]]; then
+    return
+  fi
+  case "$PARAM_PREF" in
+    off) PARAM_STATE="off"; return;;
+    on)  PARAM_STATE="on"; return;;
+  esac
+  if out="$(sqlite3 "$DB_PATH" ".parameter init\n.parameter set @p 'X'\nselect @p;" 2>/dev/null)" && [[ "$out" == "X" ]]; then
+    PARAM_STATE="on"
   else
-    WHERE_CLAUSES+=("rby.def_id = $REFERENCED_BY")
+    PARAM_STATE="off"
   fi
-fi
-if [[ -n "$CHANGE_ID" ]]; then
-  if [[ "$PARAM_MODE" == "on" ]]; then
-    PARAM_PRELUDE+=".$(printf "parameter set @p_change %s\n" "$CHANGE_ID")"
-    WHERE_CLAUSES+=("(cf.change_id = @p_change OR cd.change_id = @p_change)")
-  else
-    WHERE_CLAUSES+=("(cf.change_id = $CHANGE_ID OR cd.change_id = $CHANGE_ID)")
+  debug "parameter mode: $PARAM_STATE"
+}
+
+join_with() {
+  local delim="$1"; shift
+  local out=""
+  local first=1
+  for part in "$@"; do
+    [[ -n "$part" ]] || continue
+    if [[ $first -eq 1 ]]; then
+      out="$part"
+      first=0
+    else
+      out+="$delim$part"
+    fi
+  done
+  printf '%s' "$out"
+}
+
+build_search_clause() {
+  local term="$1"; shift
+  local like_term="$(wrap_like "$term")"
+  like_term="$(sql_quote "$like_term")"
+  local conditions=()
+  for col in "$@"; do
+    conditions+=("LOWER($col) LIKE LOWER($like_term)")
+  done
+  local joined="$(join_with ' OR ' "${conditions[@]}")"
+  printf '( %s )' "$joined"
+}
+
+command_query() {
+  local table="defs"
+  local order_sql=""
+  local limit_sql=""
+  local select_clause=""
+  local from_clause=""
+  local default_order=""
+  local count_mode=0
+  local distinct_mode=0
+  local raw_sql=0
+  local explicit_columns=""
+  local explicit_where=""
+  local id_filter=""
+  local filters_cols=()
+  local filters_vals=()
+  local search_terms=()
+
+  local type_filter=""
+  local relpath_filter=""
+  local signature_filter=""
+  local params_filter=""
+  local desc_filter=""
+  local file_desc_filter=""
+  local change_filter=""
+  local refers_to=""
+  local referenced_by=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --table)          table="$2"; shift 2;;
+      --order-by)       order_sql="$2"; shift 2;;
+      --limit)          limit_sql="$2"; shift 2;;
+      --columns)        explicit_columns="$2"; shift 2;;
+      --where)          explicit_where="$2"; shift 2;;
+      --filter)         local kv="$2"; filters_cols+=("${kv%%=*}"); filters_vals+=("${kv#*=}"); shift 2;;
+      --search)         search_terms+=("$2"); shift 2;;
+      --id)             id_filter="$2"; shift 2;;
+      --count)          count_mode=1; shift;;
+      --distinct)       distinct_mode=1; shift;;
+      --raw-sql)        raw_sql=1; shift;;
+      --type)           type_filter="$2"; shift 2;;
+      --relpath)        relpath_filter="$2"; shift 2;;
+      --signature)      signature_filter="$2"; shift 2;;
+      --parameters)     params_filter="$2"; shift 2;;
+      --description)    desc_filter="$2"; shift 2;;
+      --file-desc)      file_desc_filter="$2"; shift 2;;
+      --change)         change_filter="$2"; shift 2;;
+      --refers-to)      refers_to="$2"; shift 2;;
+      --referenced-by)  referenced_by="$2"; shift 2;;
+      --help|-h)        usage; exit 0;;
+      --verbose)        VERBOSE=1; shift;;
+      --database)       DB_PATH="$2"; PARAM_STATE=""; shift 2;;
+      --force-params)   PARAM_PREF="on"; PARAM_STATE=""; shift;;
+      --no-params)      PARAM_PREF="off"; PARAM_STATE=""; shift;;
+      --)               shift; break;;
+      -*)               fatal "unknown query option: $1";;
+      *)                fatal "unexpected argument: $1";;
+    esac
+  done
+
+  ensure_db
+  init_param_mode
+
+  local search_cols=()
+
+  case "$table" in
+    defs)
+      select_clause="defs.id AS def_id, files.relpath, defs.type, defs.signature, defs.parameters, defs.description"
+      from_clause=$'FROM defs\nJOIN files ON files.id = defs.file_id'
+      default_order="files.relpath, defs.type, defs.signature"
+      search_cols=("files.relpath" "defs.signature" "defs.description" "defs.parameters" "defs.type")
+      ;;
+    files)
+      select_clause="files.id, files.relpath, files.description"
+      from_clause="FROM files"
+      default_order="files.relpath"
+      search_cols=("files.relpath" "files.description")
+      ;;
+    changes)
+      select_clause="changes.id, changes.title, changes.status, changes.context"
+      from_clause="FROM changes"
+      default_order="changes.id"
+      search_cols=("changes.title" "changes.context" "changes.status")
+      ;;
+    change_files)
+      select_clause="change_files.id, change_files.change_id, change_files.file_id, files.relpath"
+      from_clause=$'FROM change_files\nLEFT JOIN files ON files.id = change_files.file_id'
+      default_order="change_files.change_id, change_files.id"
+      search_cols=("files.relpath")
+      ;;
+    change_defs)
+      select_clause="change_defs.id, change_defs.change_id, change_defs.file_id, change_defs.def_id, change_defs.description, files.relpath AS file_relpath, defs.signature AS def_signature"
+      from_clause=$'FROM change_defs\nLEFT JOIN files ON files.id = change_defs.file_id\nLEFT JOIN defs ON defs.id = change_defs.def_id'
+      default_order="change_defs.change_id, change_defs.id"
+      search_cols=("change_defs.description" "files.relpath" "defs.signature")
+      ;;
+    todo)
+      select_clause="todo.id, todo.change_id, todo.change_defs_id, todo.change_files_id, todo.description"
+      from_clause="FROM todo"
+      default_order="todo.change_id, todo.id"
+      search_cols=("todo.description")
+      ;;
+    refs)
+      select_clause="refs.id, refs.def_id, d.signature AS def_signature, refs.reference_def_id, rd.signature AS reference_signature"
+      from_clause=$'FROM refs\nLEFT JOIN defs d ON d.id = refs.def_id\nLEFT JOIN defs rd ON rd.id = refs.reference_def_id'
+      default_order="refs.id"
+      search_cols=("d.signature" "rd.signature")
+      ;;
+    *)
+      fatal "unsupported table for query: $table"
+      ;;
+  esac
+
+  if [[ -n "$explicit_columns" ]]; then
+    select_clause="$explicit_columns"
   fi
-fi
+  [[ $count_mode -eq 1 ]] && select_clause="COUNT(*)"
+  [[ $distinct_mode -eq 1 && $count_mode -eq 0 ]] && select_clause="DISTINCT $select_clause"
 
-WHERE_SQL="WHERE 1=1"
-for clause in "${WHERE_CLAUSES[@]:-}"; do
-  WHERE_SQL+=" AND $clause"
-done
+  [[ -z "$order_sql" ]] && order_sql="$default_order"
 
-ORDER_SQL=""
-if [[ "$DO_COUNT" -eq 0 && -n "$ORDER_BY" ]]; then
-  ORDER_SQL="ORDER BY $ORDER_BY"
-fi
-LIMIT_SQL=""
-if [[ -n "$LIMIT_VAL" ]]; then
-  LIMIT_SQL="LIMIT $LIMIT_VAL"
-fi
+  local where_clauses=("1=1")
 
-read -r -d '' SQL_BODY <<SQL || true
-SELECT $SELECT_LIST
-$FROM_JOIN
-$WHERE_SQL
-$ORDER_SQL
-$LIMIT_SQL;
+  if [[ -n "$id_filter" ]]; then
+    where_clauses+=("$table.id = $id_filter")
+  fi
+
+  if [[ -n "$type_filter" ]]; then
+    [[ "$table" == "defs" ]] || fatal "--type is only valid for defs"
+    where_clauses+=("defs.type LIKE $(sql_quote "$(wrap_like "$type_filter")")")
+  fi
+
+  if [[ -n "$relpath_filter" ]]; then
+    case "$table" in
+      defs|change_files|change_defs)
+        where_clauses+=("files.relpath LIKE $(sql_quote "$(wrap_like "$relpath_filter")")")
+        ;;
+      files)
+        where_clauses+=("files.relpath LIKE $(sql_quote "$(wrap_like "$relpath_filter")")")
+        ;;
+      *)
+        fatal "--relpath is not supported for table $table"
+        ;;
+    esac
+  fi
+
+  if [[ -n "$signature_filter" ]]; then
+    case "$table" in
+      defs)
+        where_clauses+=("defs.signature LIKE $(sql_quote "$(wrap_like "$signature_filter")")")
+        ;;
+      change_defs)
+        where_clauses+=("defs.signature LIKE $(sql_quote "$(wrap_like "$signature_filter")")")
+        ;;
+      refs)
+        where_clauses+=("(d.signature LIKE $(sql_quote "$(wrap_like "$signature_filter")") OR rd.signature LIKE $(sql_quote "$(wrap_like "$signature_filter")"))")
+        ;;
+      *)
+        fatal "--signature is not supported for table $table"
+        ;;
+    esac
+  fi
+
+  if [[ -n "$params_filter" ]]; then
+    [[ "$table" == "defs" ]] || fatal "--parameters is only valid for defs"
+    where_clauses+=("defs.parameters LIKE $(sql_quote "$(wrap_like "$params_filter")")")
+  fi
+
+  if [[ -n "$desc_filter" ]]; then
+    case "$table" in
+      defs) where_clauses+=("defs.description LIKE $(sql_quote "$(wrap_like "$desc_filter")")");;
+      files) where_clauses+=("files.description LIKE $(sql_quote "$(wrap_like "$desc_filter")")");;
+      change_defs) where_clauses+=("change_defs.description LIKE $(sql_quote "$(wrap_like "$desc_filter")")");;
+      todo) where_clauses+=("todo.description LIKE $(sql_quote "$(wrap_like "$desc_filter")")");;
+      changes) where_clauses+=("changes.context LIKE $(sql_quote "$(wrap_like "$desc_filter")")");;
+      *) fatal "--description is not supported for table $table";;
+    esac
+  fi
+
+  if [[ -n "$file_desc_filter" ]]; then
+    case "$table" in
+      defs|change_files|change_defs)
+        where_clauses+=("files.description LIKE $(sql_quote "$(wrap_like "$file_desc_filter")")")
+        ;;
+      *)
+        fatal "--file-desc is only valid when files.* is joined"
+        ;;
+    esac
+  fi
+
+  if [[ -n "$change_filter" ]]; then
+    case "$table" in
+      defs)
+        from_clause+=$'\nLEFT JOIN change_files cf ON cf.file_id = files.id\nLEFT JOIN change_defs cd ON cd.def_id = defs.id'
+        where_clauses+=("(cf.change_id = $change_filter OR cd.change_id = $change_filter)")
+        ;;
+      change_files)
+        where_clauses+=("change_files.change_id = $change_filter")
+        ;;
+      change_defs)
+        where_clauses+=("change_defs.change_id = $change_filter")
+        ;;
+      todo)
+        where_clauses+=("todo.change_id = $change_filter")
+        ;;
+      changes)
+        where_clauses+=("changes.id = $change_filter")
+        ;;
+      *)
+        fatal "--change not supported for table $table"
+        ;;
+    esac
+  fi
+
+  if [[ -n "$refers_to" && -n "$referenced_by" ]]; then
+    fatal "use either --refers-to or --referenced-by, not both"
+  fi
+  if [[ -n "$refers_to" ]]; then
+    [[ "$table" == "defs" ]] || fatal "--refers-to only applies to defs"
+    from_clause+=$'\nJOIN refs rft ON rft.def_id = defs.id'
+    where_clauses+=("rft.reference_def_id = $refers_to")
+  fi
+  if [[ -n "$referenced_by" ]]; then
+    [[ "$table" == "defs" ]] || fatal "--referenced-by only applies to defs"
+    from_clause+=$'\nJOIN refs rby ON rby.reference_def_id = defs.id'
+    where_clauses+=("rby.def_id = $referenced_by")
+  fi
+
+  for i in "${!filters_cols[@]}"; do
+    local col="${filters_cols[$i]}"
+    local val="${filters_vals[$i]}"
+    [[ -n "$col" ]] || continue
+    local ref="$(sanitize_column_ref "$col")"
+    where_clauses+=("$ref LIKE $(sql_quote "$(wrap_like "$val")")")
+  done
+
+  for term in "${search_terms[@]}"; do
+    [[ ${#search_cols[@]} -gt 0 ]] || fatal "search is not supported for table $table"
+    local clause="$(build_search_clause "$term" "${search_cols[@]}")"
+    where_clauses+=("$clause")
+  done
+
+  if [[ -n "$explicit_where" ]]; then
+    where_clauses+=("($explicit_where)")
+  fi
+
+  local where_sql="WHERE $(join_with ' AND ' "${where_clauses[@]}")"
+  local order_clause=""
+  [[ $count_mode -eq 0 && -n "$order_sql" ]] && order_clause="ORDER BY $order_sql"
+  local limit_clause=""
+  [[ -n "$limit_sql" ]] && limit_clause="LIMIT $limit_sql"
+
+  read -r -d '' SQL_BODY <<SQL || true
+SELECT $select_clause
+$from_clause
+$where_sql
+$order_clause
+$limit_clause;
 SQL
 
-# Debug print
-if [[ "$RAW_SQL" -eq 1 ]]; then
-  if [[ "$PARAM_MODE" == "on" ]]; then
-    echo "/* .parameter prelude */"
-    printf ".parameter init\n%b" "$PARAM_PRELUDE"
-  else
-    echo "/* literal-quoted mode (no .parameter) */"
+  if [[ $raw_sql -eq 1 ]]; then
+    echo "/* SQL */" >&2
+    echo "$SQL_BODY" >&2
   fi
-  echo "/* SQL */"
-  echo "$SQL_BODY"
-fi
 
-# Execute
-if [[ "$PARAM_MODE" == "on" ]]; then
-  sqlite3 "$DB_PATH" <<EOF
-.timer off
-.headers on
-.mode column
-.parameter init
-$PARAM_PRELUDE
-$SQL_BODY
-EOF
-else
   sqlite3 "$DB_PATH" <<EOF
 .timer off
 .headers on
 .mode column
 $SQL_BODY
 EOF
-fi
+}
+
+command_search() {
+  local table="defs"
+  local limit=20
+  local passthrough=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --table|-t) table="$2"; shift 2;;
+      --limit)    limit="$2"; shift 2;;
+      --order-by) passthrough+=("--order-by" "$2"); shift 2;;
+      --columns)  passthrough+=("--columns" "$2"); shift 2;;
+      --change)   passthrough+=("--change" "$2"); shift 2;;
+      --filter)   passthrough+=("--filter" "$2"); shift 2;;
+      --where)    passthrough+=("--where" "$2"); shift 2;;
+      --raw-sql)  passthrough+=("--raw-sql"); shift;;
+      --distinct) passthrough+=("--distinct"); shift;;
+      --count)    passthrough+=("--count"); shift;;
+      --help|-h)  usage; exit 0;;
+      --) shift; break;;
+      -* ) fatal "unknown search option: $1";;
+      *) break;;
+    esac
+  done
+  local terms=()
+  while [[ $# -gt 0 ]]; do
+    terms+=("$1"); shift
+  done
+  [[ ${#terms[@]} -gt 0 ]] || fatal "search requires at least one term"
+
+  local args=("--table" "$table" "--limit" "$limit")
+  args+=("${passthrough[@]}")
+  for term in "${terms[@]}"; do
+    args+=("--search" "$term")
+  done
+  command_query "${args[@]}"
+}
+
+parse_assignments() {
+  local -n _names_ref="$1"
+  local -n _values_ref="$2"
+  shift 2
+  while [[ $# -gt 0 ]]; do
+    local pair="$1"
+    if [[ "$pair" != *=* ]]; then
+      fatal "expected key=value assignment, got '$pair'"
+    fi
+    local key="${pair%%=*}"
+    local value="${pair#*=}"
+    [[ -n "$key" ]] || fatal "empty column name in assignment"
+    _names_ref+=("$(sanitize_identifier "$key")")
+    _values_ref+=("$value")
+    shift
+  done
+}
+
+command_insert() {
+  ensure_db
+  [[ $# -ge 2 ]] || fatal "insert requires TABLE and at least one key=value"
+  local table="$1"; shift
+  table="$(sanitize_identifier "$table")"
+  local cols=()
+  local vals=()
+  parse_assignments cols vals "$@"
+  local col_list="$(join_with ', ' "${cols[@]}")"
+  local val_list_parts=()
+  for v in "${vals[@]}"; do
+    val_list_parts+=("$(sql_quote "$v")")
+  done
+  local val_list="$(join_with ', ' "${val_list_parts[@]}")"
+  sqlite3 "$DB_PATH" <<EOF
+.timer off
+.headers on
+.mode column
+BEGIN;
+INSERT INTO $table ($col_list) VALUES ($val_list);
+SELECT last_insert_rowid() AS last_insert_rowid;
+COMMIT;
+EOF
+}
+
+command_update() {
+  ensure_db
+  [[ $# -ge 1 ]] || fatal "update requires TABLE"
+  local table="$1"; shift
+  table="$(sanitize_identifier "$table")"
+  local id_clause=""
+  local where_clause=""
+  local sets=()
+  local values=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --set)
+        [[ $# -ge 2 ]] || fatal "--set expects key=value"
+        parse_assignments sets values "$2"
+        shift 2
+        ;;
+      --id)
+        id_clause="$2"; shift 2
+        ;;
+      --where)
+        where_clause="$2"; shift 2
+        ;;
+      --) shift; break;;
+      *)
+        parse_assignments sets values "$1"
+        shift
+        ;;
+    esac
+  done
+  [[ ${#sets[@]} -gt 0 ]] || fatal "update requires at least one --set column=value"
+  if [[ -n "$id_clause" && -n "$where_clause" ]]; then
+    fatal "provide either --id or --where, not both"
+  fi
+  if [[ -z "$where_clause" && -z "$id_clause" ]]; then
+    fatal "update requires --id ID or --where SQL"
+  fi
+  [[ ${#sets[@]} -eq ${#values[@]} ]] || fatal "internal error: set/value mismatch"
+  local set_fragments=()
+  for i in "${!sets[@]}"; do
+    set_fragments+=("${sets[$i]} = $(sql_quote "${values[$i]}")")
+  done
+  local set_clause="$(join_with ', ' "${set_fragments[@]}")"
+  if [[ -n "$id_clause" ]]; then
+    where_clause="$table.id = $id_clause"
+  fi
+  sqlite3 "$DB_PATH" <<EOF
+.timer off
+.headers on
+.mode column
+UPDATE $table
+   SET $set_clause
+ WHERE $where_clause;
+SELECT changes() AS rows_changed;
+EOF
+}
+
+command_delete() {
+  ensure_db
+  [[ $# -ge 1 ]] || fatal "delete requires TABLE"
+  local table="$1"; shift
+  table="$(sanitize_identifier "$table")"
+  local where_clause=""
+  local id_clause=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --id) id_clause="$2"; shift 2;;
+      --where) where_clause="$2"; shift 2;;
+      --) shift; break;;
+      *) fatal "unknown delete option: $1";;
+    esac
+  done
+  if [[ -n "$id_clause" && -n "$where_clause" ]]; then
+    fatal "provide either --id or --where"
+  fi
+  if [[ -z "$where_clause" ]]; then
+    [[ -n "$id_clause" ]] || fatal "delete requires --id ID or --where SQL"
+    where_clause="$table.id = $id_clause"
+  fi
+  sqlite3 "$DB_PATH" <<EOF
+.timer off
+.headers on
+.mode column
+DELETE FROM $table WHERE $where_clause;
+SELECT changes() AS rows_deleted;
+EOF
+}
+
+command_describe() {
+  ensure_db
+  [[ $# -ge 1 ]] || fatal "describe requires TABLE"
+  local table="$1"; shift
+  table="$(sanitize_identifier "$table")"
+  local show_schema=0
+  local row_id=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --schema) show_schema=1; shift;;
+      --id)     row_id="$2"; shift 2;;
+      --where)
+        local where_clause="$2"; shift 2
+        sqlite3 "$DB_PATH" <<EOF
+.timer off
+.headers on
+.mode column
+SELECT * FROM $table WHERE $where_clause;
+EOF
+        return
+        ;;
+      --) shift; break;;
+      *) fatal "unknown describe option: $1";;
+    esac
+  done
+  if [[ $show_schema -eq 1 ]]; then
+    sqlite3 "$DB_PATH" "PRAGMA table_info($table);"
+  fi
+  if [[ -n "$row_id" ]]; then
+    sqlite3 "$DB_PATH" <<EOF
+.timer off
+.headers on
+.mode column
+SELECT * FROM $table WHERE id = $row_id;
+EOF
+  elif [[ $show_schema -eq 0 ]]; then
+    sqlite3 "$DB_PATH" <<EOF
+.timer off
+.headers on
+.mode column
+SELECT * FROM $table LIMIT 20;
+EOF
+  fi
+}
+
+command_plan() {
+  ensure_db
+  [[ $# -eq 1 ]] || fatal "plan requires CHANGE_ID"
+  local change_id="$1"
+  sqlite3 "$DB_PATH" <<EOF
+.timer off
+.headers on
+.mode column
+SELECT id, title, status, context FROM changes WHERE id = $change_id;
+
+SELECT cf.id AS change_file_id, cf.file_id, f.relpath, f.description
+  FROM change_files cf
+  LEFT JOIN files f ON f.id = cf.file_id
+ WHERE cf.change_id = $change_id
+ ORDER BY cf.id;
+
+SELECT cd.id AS change_def_id, cd.file_id, cd.def_id, cd.description, f.relpath, d.signature
+  FROM change_defs cd
+  LEFT JOIN files f ON f.id = cd.file_id
+  LEFT JOIN defs d ON d.id = cd.def_id
+ WHERE cd.change_id = $change_id
+ ORDER BY cd.id;
+
+SELECT t.id AS todo_id, t.description, t.change_defs_id, t.change_files_id
+  FROM todo t
+ WHERE t.change_id = $change_id
+ ORDER BY t.id;
+EOF
+}
+
+command_raw() {
+  ensure_db
+  if [[ $# -eq 0 ]]; then
+    sqlite3 "$DB_PATH"
+  else
+    local sql="$*"
+    sqlite3 "$DB_PATH" <<EOF
+.timer off
+.headers on
+.mode column
+$sql
+EOF
+  fi
+}
+
+main() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --database) DB_PATH="$2"; PARAM_STATE=""; shift 2;;
+      --force-params) PARAM_PREF="on"; PARAM_STATE=""; shift;;
+      --no-params) PARAM_PREF="off"; PARAM_STATE=""; shift;;
+      --verbose) VERBOSE=1; shift;;
+      -h|--help) usage; exit 0;;
+      query|search|insert|update|delete|describe|plan|raw)
+        local command="$1"; shift
+        case "$command" in
+          query)    command_query "$@"; return;;
+          search)   command_search "$@"; return;;
+          insert)   command_insert "$@"; return;;
+          update)   command_update "$@"; return;;
+          delete)   command_delete "$@"; return;;
+          describe) command_describe "$@"; return;;
+          plan)     command_plan "$@"; return;;
+          raw)      command_raw "$@"; return;;
+        esac
+        ;;
+      --*)
+        command_query "$@"
+        return
+        ;;
+      *)
+        command_query "$@"
+        return
+        ;;
+    esac
+  done
+  command_query --limit 50
+}
+
+main "$@"

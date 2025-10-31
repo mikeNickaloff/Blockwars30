@@ -57,6 +57,7 @@ Engine.GameScene {
 
     } */
     Component.onCompleted: {
+    battleGrid.fillGrid()
         /*addSceneDragItem("test_rect", test_rect)
         addSceneDragItem("test_rect2", test_rect2)
         addSceneDropItem("drop_item", dropItem);
@@ -91,26 +92,31 @@ Engine.GameScene {
     property int launchIndex: 0
     Timer {
         id: checkRefillTimer
-        interval: 4000
+        interval: 1000
         repeat: false
         triggeredOnStart: false
         running: false
         onTriggered: {
             if (battleGrid.currentState == "init") {
                 battleGrid.currentState = "compact"
+                return
             }
 
             if (battleGrid.currentState == "launched") {
                 battleGrid.currentState = "compact"
+                return
             }
             if (battleGrid.currentState == "compacted") {
                 battleGrid.currentState = "fill"
+                return
             }
             if (battleGrid.currentState == "filled") {
                 battleGrid.currentState = "match"
+                return
             }
             if (battleGrid.currentState == "matched") {
                 battleGrid.currentState = "launch"
+                return
             }
 
 
@@ -159,7 +165,7 @@ Engine.GameScene {
                 launchTimer.running = true
                 var new_blocks = [];
                 console.log(battleGrid.currentState)
-                if (battleGrid.currentState == "init") {
+                //if (battleGrid.currentState == "init") {
                 for (var i=0; i<8; i++) {
                     var blk = battleGrid.getBlockEntryAt(((i * 2) % 6), Math.floor((i * 2) / 6))
                     var wrapper = battleGrid.getBlockWrapper(((i * 2) % 6), Math.floor((i * 2) / 6))
@@ -167,7 +173,7 @@ Engine.GameScene {
                     wrapper.animationDurationY = 360
 
                     debugScene.blocks.push(wrapper);
-                }
+               // }
                 }
             }
         }

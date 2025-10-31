@@ -7,19 +7,15 @@ import "../factory.js" as Factory
 import "../layouts.js" as Layout
 import QtQuick.Layouts
 
-
-
-
-
-
 Item {
     id: root
-    width: 400; height: 400
+    width: 400
+    height: 400
 
-    // Your scene (must expose addSceneDragItem(name, item))
+    // Scene reference supplied by the parent view.
     property var gameScene
 
-    // Grid params. Tweak at runtime if you enjoy power.
+    // Grid configuration.
     property int gridCols: 6
     property int gridRows: 6
     property int cellW: 50
@@ -29,186 +25,547 @@ Item {
     property int originX: 40
     property int originY: 40
     readonly property int gridHeight: (gridRows * cellH) + Math.max(0, gridRows - 1) * gapY
-    property alias blocksModel: blocksModel
-    // Keep references if you want to reflow or mutate later
+
     property var instances: []
     property int blockSequence: 0
     property string launchDirection: "down"
     readonly property var blockPalette: ["red", "blue", "green", "yellow"]
     readonly property string blockIdPrefix: "grid_block"
 
+    property string currentState: "init"
+    property string previousState: ""
+    property bool suppressStateHandler: false
+
     readonly property var stateList: [
         "init", "initializing", "initialized",
-        "precompact", "precompacting", "precompacted",
         "compact", "compacting", "compacted",
         "fill", "filling", "filled",
-        "fastfill", "fastfilling", "fastfilled",
         "match", "matching", "matched",
-        "launch", "launching", "launched",
-        "fastlaunch", "fastlaunching", "fastlaunched",
-        "powerup", "poweruping", "poweruped",
-        "swap", "swapping", "swapped",
-        "aimove", "aimoving", "aimoved",
-        "ready", "wait", "waiting"
+        "launch", "launching", "launched"
     ]
-    property string currentState: "init"
 
+    // Compact representation of the grid.
+    property var blockMatrix: []
 
+    // Queue used to serialize lifecycle work.
     property var battleQueue: []
     property bool queueProcessing: false
     property var activeQueueItem: null
 
-
-
-
-
-    // Components for factory injection
-    Component { id: dragComp;  Engine.GameDragItem { } }
-    Component { id: blockComp; UI.Block { } }
-
-
-
-    // Your model. Could be ListModel, JS array, or C++ model.
-    ListModel {
-        id: blocksModel
-        // 36 entries for 6x6, but do whatever
-        Component.onCompleted: {
-            fillGrid();
+    property var stateActions: ({
+        init: {
+            main: function(target) {
+                target.fillGrid();
+                return { initialized: true };
+            }
+        },
+        compact: {
+            main: function(target) {
+                target.compactColumns();
+                target.spawnMissingBlocks();
+                return { compacted: true };
+            }
+        },
+        fill: {
+            main: function(target) {
+                target.fillMissingBlocks();
+                return { filled: true };
+            }
+        },
+        match: {
+            main: function(target) {
+                return target.markMatchedBlocks();
+            }
+        },
+        launch: {
+            main: function(target) {
+                return target.launchMatchedBlocks();
+            }
         }
+    });
+
+    function normalizeStateName(value) {
+        if (value === null || value === undefined)
+            return "";
+        return value.toString().trim().toLowerCase();
     }
-    Grid {
-        anchors.fill: parent
-        rows: 6
-        columns: 6
-        flow: Grid.TopToBottom
-        layoutDirection: Qt.RightToLeft
-        move: Transition {
-            NumberAnimation { properties: "x,y"; duration: 1000
-            }
-        }
-        Repeater {
-            id: blockRepeater
 
-            model: 36
+    function stateFormsFor(stateValue) {
+        const normalized = normalizeStateName(stateValue);
+        const index = stateList.indexOf(normalized);
+        if (index === -1)
+            return null;
 
-            delegate: Engine.GameDragItem {
-               required property var model
-               required property var index
-               property var rootObject: root
+        const baseIndex = index - (index % 3);
+        return {
+            base: stateList[baseIndex],
+            active: stateList[baseIndex + 1] || stateList[baseIndex],
+            completed: stateList[baseIndex + 2] || stateList[baseIndex + 1] || stateList[baseIndex]
+        };
+    }
 
+    function setGridStateInternal(stateName, suppressHandler) {
+        const normalized = normalizeStateName(stateName);
+        if (!normalized || currentState === normalized)
+            return false;
 
-               id: delegate
+        const previous = currentState;
+        const suppress = suppressHandler !== undefined ? suppressHandler : true;
+        if (suppress)
+            suppressStateHandler = true;
+        currentState = normalized;
+        previousState = previous;
+        if (suppress)
+            suppressStateHandler = false;
+        return true;
+    }
 
-               gameScene: root.gameScene
-               itemName: "block_dragItem_" + index
-               width: 64
-               height: 64
-               x: 0
-               y: 0
-               z: 4
+    function requestState(baseState) {
+        const forms = stateFormsFor(baseState);
+        if (!forms)
+            return false;
+        const changed = setGridStateInternal(forms.base, false);
+        if (!changed && currentState === forms.base)
+            enqueueLifecycleForState(forms.base);
+        return true;
+    }
 
-               entry:  blockEntry
-               payload: ["itemName"]
-               property int myIndex: index
+    onCurrentStateChanged: handleStateChange(currentState, previousState)
 
+    function handleStateChange(newState, oldState) {
+        console.log("state changed from",root, "from", oldState,"to", newState)
+        if (suppressStateHandler)
+            return;
+        previousState = oldState || "";
+        const forms = stateFormsFor(newState);
+        if (!forms)
+            return;
 
-
-
-
-
-               UI.Block {
-                   id: blockEntry
-                   blockColor:"blue"
-                   itemName: delegate.blockId
-                   gameScene: root.gameScene
-                   width: 64
-                   height: 64
-                   row: model.row
-                   column: model.column
-                   maxRows: root.gridRows
-                   onBlockStateChanged: {
-                       if (blockState === "destroyed") {
-                           delegate.entry.blockDestroyed(itemName);
-                       }
-                   }
-               }
-               Component.onCompleted: {
-                   delegate.rootObject.gameScene.addSceneDragItem(delegate.itemName, delegate);
-               }
-               Component.onDestruction: {
-                   if (delegate.rootObject && delegate.rootObject.gameScene && typeof delegate.rootObject.gameScene.removeSceneItem === "function") {
-                       delegate.rootObject.gameScene.removeSceneItem(delegate.itemName);
-                       const dropName = delegate.entry && delegate.entry.itemName ? (delegate.entry.itemName + "_drop") : null;
-                       if (dropName)
-                           delegate.rootObject.gameScene.removeSceneItem(dropName);
-                   }
-               }
-
-
-
-
-            }
-
-
-
+        if (forms.base === normalizeStateName(newState)) {
+            enqueueLifecycleForState(forms.base);
         }
     }
 
+    function enqueueLifecycleForState(baseState) {
+        if (isLifecycleQueued(baseState))
+            return;
+
+        const forms = stateFormsFor(baseState);
+        if (!forms)
+            return;
+
+        const stateAction = stateActions[forms.base] || {};
+        const queueItem = {
+            name: "lifecycle-" + forms.base,
+            forms: forms,
+            action: stateAction,
+            start_function: function(target) {
+                target.setGridStateInternal(forms.active);
+                if (typeof stateAction.start === "function")
+                    stateAction.start(target, forms);
+            },
+            main_function: function(target) {
+                if (typeof stateAction.main === "function")
+                    return stateAction.main(target, forms);
+                return {};
+            },
+            end_function: function(target, item, context) {
+                target.setGridStateInternal(forms.completed);
+                if (typeof stateAction.end === "function")
+                    stateAction.end(target, context, forms);
+                target.handleLifecycleCompleted(forms, context);
+            }
+        };
+
+        enqueueBattleEvent(queueItem);
+    }
+
+    function isLifecycleQueued(baseState) {
+        const target = normalizeStateName(baseState);
+        if (!target)
+            return false;
+
+        if (activeQueueItem && activeQueueItem.forms && activeQueueItem.forms.base === target)
+            return true;
+
+        for (var idx = 0; idx < battleQueue.length; ++idx) {
+            const item = battleQueue[idx];
+            if (item && item.forms && item.forms.base === target)
+                return true;
+        }
+        return false;
+    }
+
+    function enqueueBattleEvent(eventObject) {
+        console.log("Enqueued battle event",JSON.stringify(eventObject))
+        if (!eventObject)
+            return;
+        battleQueue.push(eventObject);
+        processNextQueueItem();
+    }
+
+    function processNextQueueItem() {
+
+        if (queueProcessing)
+            console.log("battle queue received request to process next item while queue processing another item");
+            return;
+        if (!battleQueue.length)
+            console.log("finished battle queue processing");
+            return;
+
+        activeQueueItem = battleQueue.shift();
+        queueProcessing = true;
+        console.log("processing battle event", JSON.stringify(activeQueueItem))
+
+        const item = activeQueueItem;
+        try {
+            if (typeof item.start_function === "function")
+                item.start_function(root, item);
+        } catch (err) {
+            console.warn("BattleGrid: lifecycle start error", err);
+        }
+
+        let mainResult;
+        let mainThrew = false;
+        try {
+            if (typeof item.main_function === "function")
+                mainResult = item.main_function(root, item);
+        } catch (err) {
+            mainThrew = true;
+            console.warn("BattleGrid: lifecycle main error", err);
+            mainResult = { error: err };
+        }
+
+        const settle = function(payload) {
+            const context = payload === undefined ? {} : payload;
+            try {
+                if (typeof item.end_function === "function")
+                    item.end_function(root, item, context);
+            } catch (err) {
+                console.warn("BattleGrid: lifecycle end error", err);
+            }
+
+            queueProcessing = false;
+            activeQueueItem = null;
+            processNextQueueItem();
+        };
+
+        if (!mainThrew && isPromiseLike(mainResult)) {
+            mainResult.then(function(value) {
+                settle({ result: value });
+            }, function(reason) {
+                settle({ error: reason });
+            });
+        } else {
+            settle(mainResult);
+        }
+    }
+
+    function isPromiseLike(value) {
+        return value && typeof value.then === "function";
+    }
+
+    function handleLifecycleCompleted(forms, context) {
+        const baseState = forms.base;
+        const summary = context && context.result ? context.result : context;
+
+        switch (baseState) {
+        case "init":
+            requestState("compact");
+            break;
+        case "compact":
+            requestState("fill");
+            break;
+        case "fill":
+            requestState("match");
+            break;
+        case "match": {
+            const matches = summary && summary.matches ? summary.matches : [];
+            if (matches.length)
+                requestState("launch");
+            break;
+        }
+        case "launch":
+            requestState("compact");
+            break;
+        default:
+            break;
+        }
+    }
+
+    function ensureMatrix() {
+        if (!blockMatrix || blockMatrix.length !== gridRows) {
+            var newMatrix = [];
+            for (var r = 0; r < gridRows; ++r)
+                newMatrix.push(new Array(gridCols));
+            blockMatrix = newMatrix;
+            return;
+        }
+
+        for (var idx = 0; idx < gridRows; ++idx) {
+            if (!blockMatrix[idx] || blockMatrix[idx].length !== gridCols)
+                blockMatrix[idx] = new Array(gridCols);
+        }
+    }
+
+    function cellPosition(row, column) {
+        return {
+            x: originX + column * (cellW + gapX),
+            y: originY + row * (cellH + gapY)
+        };
+    }
+
+    function setWrapperAt(row, column, wrapper) {
+        ensureMatrix();
+        if (row < 0 || row >= gridRows || column < 0 || column >= gridCols)
+            return;
+
+        blockMatrix[row][column] = wrapper;
+        if (!wrapper)
+            return;
 
 
+
+        if (wrapper.entry) {
+            wrapper.entry.row = row;
+            wrapper.entry.column = column;
+            if (!wrapper.entry.blockState)
+                wrapper.entry.blockState = "idle";
+        }
+
+        wrapper.width = cellW;
+        wrapper.height = cellH;
+        const pos = cellPosition(row, column);
+        wrapper.x = pos.x;
+        wrapper.y = pos.y;
+    }
+
+    function clearWrapperAt(row, column) {
+        ensureMatrix();
+        if (row < 0 || row >= gridRows || column < 0 || column >= gridCols)
+            return;
+        blockMatrix[row][column] = null;
+    }
+
+    function getBlockWrapper(row, column) {
+        ensureMatrix();
+        if (row < 0 || row >= gridRows || column < 0 || column >= gridCols)
+            return null;
+        return blockMatrix[row][column] || null;
+    }
 
     function getBlockEntryAt(row, column) {
-        if (row < 0 || row >= gridRows || column < 0 || column >= gridCols)
-            return null;
-
-        const index = (column * gridRows) + row;
-        const block = blockRepeater.itemAt(index);
-        return block ? block.entry : null;
+        const wrapper = getBlockWrapper(row, column);
+        return wrapper ? wrapper.entry : null;
     }
-    function getBlockWrapper(row, column) {
-        if (row < 0 || row >= gridRows || column < 0 || column >= gridCols)
-            return null;
 
-        const index = (column * gridRows) + row;
-        const block = blockRepeater.itemAt(index);
-        return block ? block : null;
+    function moveWrapper(wrapper, targetRow, targetColumn) {
+        if (!wrapper)
+            return;
+
+        const currentPos = findWrapperPosition(wrapper);
+        if (currentPos.row >= 0 && currentPos.column >= 0)
+            clearWrapperAt(currentPos.row, currentPos.column);
+
+        setWrapperAt(targetRow, targetColumn, wrapper);
+    }
+
+    function findWrapperPosition(wrapper) {
+        ensureMatrix();
+        for (var row = 0; row < gridRows; ++row) {
+            for (var column = 0; column < gridCols; ++column) {
+                if (blockMatrix[row][column] === wrapper)
+                    return { row: row, column: column };
+            }
+        }
+        return { row: -1, column: -1 };
     }
 
     function fillGrid() {
-        console.log("Filling Grid Model", blocksModel);
-        for (var i=0; i<6; i++) {
-            for (var u=0; u<6; u++) {
-                if (!getBlockWrapper(i, u)) {
-                    Factory.createBlock(blockComp, dragComp, gameScene, {row: i, column: u, gameScene: gameScene, blockColor: "green"})
-                }
+        ensureMatrix();
+        for (var row = 0; row < gridRows; ++row) {
+            for (var column = 0; column < gridCols; ++column) {
+                if (getBlockWrapper(row, column))
+                    continue;
+
+                const pos = cellPosition(row, column);
+                const dragItem = Factory.createBlock(
+                            blockComp,
+                            dragComp,
+                            root,
+                            gameScene || root,
+                            {
+                                width: cellW,
+                                height: cellH,
+                                x: pos.x,
+                                y: pos.y,
+                                blockProps: {
+                                    row: row,
+                                    column: column,
+                                    maxRows: gridRows,
+                                    blockColor: blockPalette[(row + column) % blockPalette.length]
+                                },
+                                dragProps: {
+                                    width: cellW,
+                                    height: cellH,
+                                    x: pos.x,
+                                    y: pos.y
+                                }
+                            });
+
+                if (!dragItem)
+                    continue;
+
+                instances.push(dragItem);
+                setWrapperAt(row, column, dragItem);
             }
         }
     }
 
+    function compactColumns() {
+        ensureMatrix();
+        for (var column = 0; column < gridCols; ++column) {
+            var survivors = [];
+            for (var row = gridRows - 1; row >= 0; --row) {
+                const wrapper = getBlockWrapper(row, column);
+                if (wrapper)
+                    survivors.push(wrapper);
+            }
 
+            var targetRow = gridRows - 1;
+            for (var idx = 0; idx < survivors.length; ++idx) {
+                moveWrapper(survivors[idx], targetRow, column);
+                targetRow -= 1;
+            }
 
-    function indexFor(row, column) {
-        if (row < 0 || column < 0)
-            return -1;
-        return (column * gridRows) + row;
+            while (targetRow >= 0) {
+                clearWrapperAt(targetRow, column);
+                targetRow -= 1;
+            }
+        }
     }
 
-    function findModelIndexByItemName(blockId) {
-        for (var i = 0; i < blocksModel.count; i++) {
-            const element = blocksModel.get(i);
-            if (element.blockId === blockId)
-                return i;
+    function spawnMissingBlocks() {
+        fillGrid();
+    }
+
+    function fillMissingBlocks() {
+        fillGrid();
+    }
+
+    function markMatchedBlocks() {
+        ensureMatrix();
+
+        const matchedWrappers = [];
+        const registerMatch = function(wrapper) {
+            if (!wrapper)
+                return;
+            if (matchedWrappers.indexOf(wrapper) === -1)
+                matchedWrappers.push(wrapper);
+        };
+
+        // Horizontal runs
+        for (var row = 0; row < gridRows; ++row) {
+            var runColor = null;
+            var runWrappers = [];
+            for (var column = 0; column <= gridCols; ++column) {
+                const wrapper = column < gridCols ? blockMatrix[row][column] : null;
+                const entry = wrapper && wrapper.entry ? wrapper.entry : null;
+                const color = entry ? entry.blockColor : null;
+
+                if (color && color === runColor) {
+                    runWrappers.push(wrapper);
+                } else {
+                    if (runColor && runWrappers.length >= 3) {
+                        for (var idx = 0; idx < runWrappers.length; ++idx)
+                            registerMatch(runWrappers[idx]);
+                    }
+                    runColor = color;
+                    runWrappers = color ? [wrapper] : [];
+                }
+            }
         }
-        return -1;
+
+        // Vertical runs
+        for (var column = 0; column < gridCols; ++column) {
+            var vRunColor = null;
+            var vRunWrappers = [];
+            for (var row = 0; row <= gridRows; ++row) {
+                const wrapper = row < gridRows ? blockMatrix[row][column] : null;
+                const entry = wrapper && wrapper.entry ? wrapper.entry : null;
+                const color = entry ? entry.blockColor : null;
+
+                if (color && color === vRunColor) {
+                    vRunWrappers.push(wrapper);
+                } else {
+                    if (vRunColor && vRunWrappers.length >= 3) {
+                        for (var idx = 0; idx < vRunWrappers.length; ++idx)
+                            registerMatch(vRunWrappers[idx]);
+                    }
+                    vRunColor = color;
+                    vRunWrappers = color ? [wrapper] : [];
+                }
+            }
+        }
+
+        // Apply states: only wrappers in matchedWrappers should flip to matched.
+        for (var applyRow = 0; applyRow < gridRows; ++applyRow) {
+            for (var applyColumn = 0; applyColumn < gridCols; ++applyColumn) {
+                const applyWrapper = blockMatrix[applyRow][applyColumn];
+                if (!applyWrapper || !applyWrapper.entry)
+                    continue;
+
+                if (matchedWrappers.indexOf(applyWrapper) !== -1)
+                    applyWrapper.entry.blockState = "matched";
+                else if (applyWrapper.entry.blockState === "matched")
+                    applyWrapper.entry.blockState = "idle";
+            }
+        }
+
+        const matches = [];
+        for (var idx = 0; idx < matchedWrappers.length; ++idx) {
+            const entry = matchedWrappers[idx] && matchedWrappers[idx].entry;
+            if (entry && entry.itemName)
+                matches.push(entry.itemName);
+        }
+
+        return { matches: matches };
+    }
+
+    function launchMatchedBlocks() {
+        ensureMatrix();
+        const launched = [];
+        for (var row = 0; row < gridRows; ++row) {
+            for (var column = 0; column < gridCols; ++column) {
+                const wrapper = blockMatrix[row][column];
+                if (!wrapper || !wrapper.entry)
+                    continue;
+                if (wrapper.entry.blockState === "matched") {
+                    wrapper.entry.blockState = "launch";
+                    if (wrapper.entry.itemName)
+                        launched.push(wrapper.entry.itemName);
+                }
+            }
+        }
+        return { launched: launched };
     }
 
     function findWrapperByItemName(blockId) {
-        for (var i = 0; i < blockRepeater.count; i++) {
-            const wrapper = blockRepeater.itemAt(i);
-            if (wrapper && wrapper.entry && wrapper.entry.itemName === blockId)
-                return wrapper;
+        ensureMatrix();
+        for (var row = 0; row < gridRows; ++row) {
+            for (var column = 0; column < gridCols; ++column) {
+                const wrapper = blockMatrix[row][column];
+                if (wrapper && wrapper.itemName === blockId)
+                    return wrapper;
+            }
         }
         return null;
     }
 
+    Component { id: dragComp; Engine.GameDragItem { } }
+    Component { id: blockComp; UI.Block { } }
+
+    Component.onCompleted: {
+        requestState("init");
+    }
 }

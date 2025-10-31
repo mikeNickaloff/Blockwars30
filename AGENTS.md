@@ -22,13 +22,11 @@
 
 - The database structure of WHEEL.db is as follows:
 
-> * files (id, relpath, description) // project files
-> * defs (id, file_id, type, signature, parameters, description) // type is member, function, or signal
-> * refs (id, def_id, reference_def_id) // will have all references for every definition stored here for rapid lookup
-> * changes (id, title,  context, status) // will be for CHANGES.md change tracking
-> * change_files (id, change_id, file_id) // for each change #, for each file that needs to be changed, need to have a row 
-> * change_defs (id, change_id, file_id, def_id, description) // describes change to parameters or description of new definition if needed by a change #
-> * todo (id, change_id, change_defs_id, change_files_id, change_defs_id, description) // todo items to be done, one item for each definition in each file that is to be added or changed. Must have all fields completed before starting work
+> * files (id, relpath, description) // project files with detailed descriptions
+> * defs (id, file_id, type, signature, parameters, description) // type is property, function, or signal (or any  other public construct accessible from other constructs, no private members). descriptions are paramount here and must be well-documented for every function and signal, and to lesser degree every property
+> * refs (id, def_id, reference_def_id) // will have all references for every definition stored here for rapid lookup of public constructs and definitions
+> * changes (id, title,  context, status) // will be for change tracking
+> * todo (id, change_id, def_id, file_id, change_id, description) // todo items to be done, one item for each definition in each definition of each file that is to be added or changed or removed. Must have all fields completed before starting work
 
 - chmod +x wheel.sh 
 
