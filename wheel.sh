@@ -43,7 +43,46 @@ debug() {
 }
 
 ensure_db() {
-  [[ -f "$DB_PATH" ]] || fatal "database not found: $DB_PATH"
+  local db_exists=0
+  if [[ -f "$DB_PATH" ]]; then
+    db_exists=1
+  fi
+
+  if ! command -v sqlite3 >/dev/null 2>&1; then
+    fatal "database not available, sqlite3 not in PATH"
+  fi
+
+  if [[ $db_exists -eq 1 ]]; then
+    return
+  fi
+
+  local sql_seed="./WHEEL.sql"
+  local target_db="./WHEEL.db"
+
+  if [[ "$DB_PATH" != "WHEEL.db" && "$DB_PATH" != "./WHEEL.db" ]]; then
+    target_db="$DB_PATH"
+  fi
+
+  if [[ -f "$sql_seed" ]]; then
+    debug "bootstrapping database from $sql_seed"
+    sqlite3 "$target_db" < "$sql_seed" || fatal "failed to bootstrap database from $sql_seed"
+    return
+  fi
+
+  fatal "database not found: $DB_PATH"
+}
+
+refresh_sql_dump() {
+  if ! command -v sqlite3 >/dev/null 2>&1; then
+    debug "skip dump refresh: sqlite3 not available"
+    return
+  fi
+
+  local dump_target="./WHEEL.sql"
+  local source_db="$DB_PATH"
+
+  debug "refreshing $dump_target from $source_db"
+  sqlite3 "$source_db" .dump > "$dump_target" || fatal "failed to dump database to $dump_target"
 }
 
 sql_quote() {
@@ -638,6 +677,7 @@ INSERT INTO $table ($col_list) VALUES ($val_list);
 SELECT last_insert_rowid() AS last_insert_rowid;
 COMMIT;
 EOF
+  refresh_sql_dump
 }
 
 command_update() {
@@ -694,6 +734,7 @@ UPDATE $table
  WHERE $where_clause;
 SELECT changes() AS rows_changed;
 EOF
+  refresh_sql_dump
 }
 
 command_delete() {
@@ -725,6 +766,7 @@ command_delete() {
 DELETE FROM $table WHERE $where_clause;
 SELECT changes() AS rows_deleted;
 EOF
+  refresh_sql_dump
 }
 
 command_describe() {

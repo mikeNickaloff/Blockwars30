@@ -467,7 +467,7 @@ INSERT INTO defs VALUES(476,51,'function','wrapper','Returns the current row/col
 INSERT INTO defs VALUES(477,74,'function','None','Prints a concise help screen covering global options and subcommands.','usage()');
 INSERT INTO defs VALUES(478,74,'function','message','Writes an error prefixed with the script name and exits with failure.','fatal(message)');
 INSERT INTO defs VALUES(479,74,'function','message','Emits debug logging when verbose mode is enabled without affecting exit status.','debug(message)');
-INSERT INTO defs VALUES(480,74,'function','None','Verifies that the configured SQLite database path exists before running commands.','ensure_db()');
+INSERT INTO defs VALUES(480,74,'function','None','Ensures sqlite3 is available and bootstraps the project database from WHEEL.sql when the target file is missing.','ensure_db()');
 INSERT INTO defs VALUES(481,74,'function','value','Escapes single quotes and wraps a value for safe inclusion in literal SQL.','sql_quote(value)');
 INSERT INTO defs VALUES(482,74,'function','value','Ensures LIKE filter inputs gain wildcard markers unless explicitly supplied.','wrap_like(value)');
 INSERT INTO defs VALUES(483,74,'function','name','Validates bare SQLite identifiers so generated SQL never references unintended columns.','sanitize_identifier(name)');
@@ -478,9 +478,9 @@ INSERT INTO defs VALUES(487,74,'function','term, columns...','Constructs a case-
 INSERT INTO defs VALUES(488,74,'function','args...','Implements the flexible query subcommand with table-aware filters, column selection helpers, and optional multi-table merge joins.','command_query(args...)');
 INSERT INTO defs VALUES(489,74,'function','args...','Convenience wrapper that expands natural text terms into query filters across one or more tables while forwarding shared query options.','command_search(args...)');
 INSERT INTO defs VALUES(490,74,'function','names_ref, values_ref, pairs...','Separates key=value pairs into aligned arrays for insert and update helpers.','parse_assignments(names_ref, values_ref, pairs...)');
-INSERT INTO defs VALUES(491,74,'function','table, assignments...','Adds rows to any WHEEL.db table while echoing the inserted row id.','command_insert(table, assignments...)');
-INSERT INTO defs VALUES(492,74,'function','table, options...','Updates rows in a table with --set/-–where handling and change counts.','command_update(table, options...)');
-INSERT INTO defs VALUES(493,74,'function','table, options...','Removes rows by primary id or custom conditions while reporting deletions.','command_delete(table, options...)');
+INSERT INTO defs VALUES(491,74,'function','table, assignments...','Adds rows to any WHEEL.db table, echoes the inserted id, and refreshes WHEEL.sql afterwards.','command_insert(table, assignments...)');
+INSERT INTO defs VALUES(492,74,'function','table, options...','Updates rows in a table, reports change counts, and refreshes WHEEL.sql when successful.','command_update(table, options...)');
+INSERT INTO defs VALUES(493,74,'function','table, options...','Removes rows by primary id or custom conditions, echoing deletion counts and refreshing WHEEL.sql.','command_delete(table, options...)');
 INSERT INTO defs VALUES(494,74,'function','table, options...','Shows table schema details and optionally previews matching rows.','command_describe(table, options...)');
 INSERT INTO defs VALUES(495,74,'function','change_id','Summarises a change id with related files, defs, and todo entries for planning.','command_plan(change_id)');
 INSERT INTO defs VALUES(496,74,'function','sql...','Runs arbitrary SQL snippets or drops into interactive sqlite3 when no SQL is given.','command_raw(sql...)');
@@ -488,6 +488,7 @@ INSERT INTO defs VALUES(497,74,'function','argv...','Parses global switches, res
 INSERT INTO defs VALUES(498,43,'function','_x, _y, matchString','Collects registered scene items into an array, optionally filtering by name substring and requiring a point to fall within each bounding box for drag/drop queries.','listSceneDropItemsAt(_x = -1, _y = -1, matchString = "")');
 INSERT INTO defs VALUES(499,43,'function','_itemName, matchstring','Returns scene items whose names include the optional filter and whose global bounds overlap the given items bounds.','listOverlappingItems(_itemName, matchstring = "")');
 INSERT INTO defs VALUES(500,43,'function','a, b','Determines whether two bounding box objects overlap by comparing their horizontal and vertical ranges.','rectsOverlap(a, b)');
+INSERT INTO defs VALUES(501,74,'function','None','Writes the current database state to WHEEL.sql after mutating commands run.','refresh_sql_dump()');
 CREATE TABLE refs (
   id INTEGER PRIMARY KEY,
   def_id INTEGER NOT NULL,
@@ -532,6 +533,8 @@ INSERT INTO changes VALUES(28,'Add listOverlappingItems helper','Provide overlap
 INSERT INTO changes VALUES(29,'Enhance wheel.sh CLI commands','Support richer table selection, column filtering, and merged query output per new CLI syntax','Complete');
 INSERT INTO changes VALUES(30,'Refine overlap detection','Adjust listOverlappingItems to use explicit axis overlap checks','Complete');
 INSERT INTO changes VALUES(31,'Align rect overlap logic','Update GameScene rectsOverlap to mirror axis-aligned bounding box tests for consistent collision detection.','Complete');
+INSERT INTO changes VALUES(32,'Add wheel.sh bootstrap checks','Ensure wheel.sh verifies sqlite3 presence and seeds WHEEL.db from WHEEL.sql when missing.','Complete');
+INSERT INTO changes VALUES(33,'Auto-dump after wheel.sh mutations','Ensure wheel.sh re-dumps WHEEL.db to WHEEL.sql after insert/update/delete commands.','Complete');
 CREATE TABLE change_files (
   id INTEGER PRIMARY KEY,
   change_id INTEGER NOT NULL,
@@ -598,6 +601,8 @@ INSERT INTO change_files VALUES(56,28,43);
 INSERT INTO change_files VALUES(57,29,74);
 INSERT INTO change_files VALUES(58,30,43);
 INSERT INTO change_files VALUES(59,31,43);
+INSERT INTO change_files VALUES(60,32,74);
+INSERT INTO change_files VALUES(61,33,74);
 CREATE TABLE change_defs (
   id INTEGER PRIMARY KEY,
   change_id INTEGER NOT NULL,
@@ -819,6 +824,11 @@ INSERT INTO change_defs VALUES(208,29,74,488,'Extend search/query commands to ac
 INSERT INTO change_defs VALUES(209,29,74,489,'Extend command_search to support multi-table searches and mixed term order');
 INSERT INTO change_defs VALUES(210,30,43,499,'Tighten overlap detection by explicit axis comparisons');
 INSERT INTO change_defs VALUES(211,31,43,500,'Tighten rectsOverlap detection to use axis-aligned bounding box intersection test.');
+INSERT INTO change_defs VALUES(212,32,74,480,'Expand ensure_db to verify sqlite3 availability and bootstrap WHEEL.db from WHEEL.sql when needed.');
+INSERT INTO change_defs VALUES(213,33,74,491,'Ensure command_insert refreshes WHEEL.sql after database mutations.');
+INSERT INTO change_defs VALUES(214,33,74,492,'Ensure command_update refreshes WHEEL.sql after applying modifications.');
+INSERT INTO change_defs VALUES(215,33,74,493,'Ensure command_delete triggers a WHEEL.sql dump so metadata stays current.');
+INSERT INTO change_defs VALUES(216,33,74,501,'Add helper that re-dumps the database to WHEEL.sql.');
 CREATE TABLE todo (
   id INTEGER PRIMARY KEY,
   change_id INTEGER NOT NULL,
@@ -906,4 +916,9 @@ INSERT INTO todo VALUES(74,29,208,57,'Update wheel.sh to handle new search/query
 INSERT INTO todo VALUES(75,29,209,57,'Update command_search to accept repeated --table flags and mixed term ordering');
 INSERT INTO todo VALUES(76,30,210,58,'Update listOverlappingItems to use explicit in-bounds X/Y overlap checks');
 INSERT INTO todo VALUES(77,31,211,59,'Update rectsOverlap to use axis-aligned bounding box overlap conditions.');
+INSERT INTO todo VALUES(78,32,212,60,'Update ensure_db sanity checks for sqlite3 availability and WHEEL.sql bootstrap.');
+INSERT INTO todo VALUES(79,33,213,61,'Update command_insert to re-run sqlite3 dump into WHEEL.sql after inserts.');
+INSERT INTO todo VALUES(80,33,214,61,'Update command_update to re-run sqlite3 dump into WHEEL.sql after updates.');
+INSERT INTO todo VALUES(81,33,215,61,'Update command_delete to re-run sqlite3 dump into WHEEL.sql after deletes.');
+INSERT INTO todo VALUES(82,33,216,61,'Add refresh_sql_dump helper to share WHEEL.sql dump logic.');
 COMMIT;
