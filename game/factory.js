@@ -123,7 +123,14 @@ function createBlock(blockComp, dragComp, parent, gameScene, opts) {
                 }
             });
         }
-
+        if (block && block.modifiedBlockGridCell) {
+            block.modifiedBlockGridCell.connect(function() {
+                console.log("Detected block modified row/column signal")
+                var cellPos = parent.cellPosition(block.row, block.column)
+                block.x = cellPos.x
+                block.y = cellPos.y
+            });
+        }
         const dropDuration = (opts.dropDurationY !== undefined)
             ? Math.max(1, opts.dropDurationY)
             : Math.max(1, dragItem.animationDurationY || 200);

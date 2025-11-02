@@ -124,6 +124,55 @@ Engine.GameScene {
             //battleGrid.fillGrid();
         }
         }
+onItemDroppedNowhere: function(itemName) {
+    console.log("drag item dropped nowhere")
+        var dragItem = getSceneItem(itemName);
+    function snapItemToGrid(item, row, col) {
+        item.x = battleGrid.cellPosition(row, col).x
+        item.y = battleGrid.cellPosition(row, col).y
+
+    }
+    snapItemToGrid(dragItem, dragItem.entry.row, dragItem.entry.column)
+}
+    onItemDroppedInNonDropArea: function(dragItemName, dropItemName, startx, starty, endx, endy) {
+        var dragItem = getSceneItem(dragItemName);
+        var dropItem = getSceneItem(dropItemName)
+        if ((dragItemName.indexOf("block_drag") == 0) && (dropItemName.indexOf("block_drag") == 0)) {
+
+            function snapItemToGrid(item, row, col) {
+                item.x = battleGrid.cellPosition(row, col).x
+                item.y = battleGrid.cellPosition(row, col).y
+
+            }
+
+            // switch request..
+            var row1 = dragItem.entry.row
+            var row2 = dropItem.entry.row
+            var col1 = dragItem.entry.column
+            var col2 = dropItem.entry.column
+            var rowDelta = Math.abs(row1 - row2)
+            var colDelta = Math.abs(col1 - col2)
+            if ((rowDelta == 1) && (colDelta == 1)) { snapItemToGrid(dragItem, row1, col1); return }
+            if ((rowDelta == 0) && (colDelta == 0)) { snapItemToGrid(dragItem, row1, col1); return }
+            if (rowDelta > 1) { snapItemToGrid(dragItem, row1, col1); return }
+            if (colDelta > 1) { snapItemToGrid(dragItem, row1, col1); return }
+
+            dragItem.entry.row = row2
+            dragItem.entry.column = col2
+            dropItem.entry.row = row1
+            dropItem.entry.column = col1
+            snapItemToGrid(dragItem, row2, col2)
+            snapItemToGrid(dropItem, row1, col1)
+
+            console.log("got valid swap  -- ",dragItemName, dropItemName, startx, starty, endx, endy)
+
+
+        }
+
+    }
+    onItemEnteredNonDropArea: {
+        console.log("item dragged and entered non-drop area", dragItemName, dropItemName)
+    }
     Timer {
         id: launchTimer
         interval: 90

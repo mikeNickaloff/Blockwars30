@@ -79,6 +79,36 @@ sanitize_column_ref() {
   fi
 }
 
+sanitize_select_expression() {
+  local expr="$1"
+  local default_tbl="${2:-}"
+  expr="${expr//[[:space:]]/}"
+  if [[ -z "$expr" ]]; then
+    fatal "empty column name"
+  fi
+  if [[ "$expr" == "*" ]]; then
+    printf '*'
+    return
+  fi
+  if [[ "$expr" == *.* && "${expr##*.}" == "*" ]]; then
+    local tbl="${expr%%.*}"
+    sanitize_identifier "$tbl" >/dev/null
+    printf '%s.*' "$tbl"
+    return
+  fi
+  if [[ "$expr" == *.* ]]; then
+    sanitize_column_ref "$expr"
+    return
+  fi
+  if [[ -n "$default_tbl" ]]; then
+    local tbl="$(sanitize_identifier "$default_tbl")"
+    local col="$(sanitize_identifier "$expr")"
+    printf '%s.%s' "$tbl" "$col"
+    return
+  fi
+  sanitize_identifier "$expr"
+}
+
 init_param_mode() {
   if [[ -n "$PARAM_STATE" ]]; then
     return
@@ -124,6 +154,9 @@ build_search_clause() {
 }
 
 command_query() {
+  local -a tables=()
+  local positional_columns=()
+  local merge_spec=""
   local table="defs"
   local order_sql=""
   local limit_sql=""
@@ -152,7 +185,8 @@ command_query() {
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --table)          table="$2"; shift 2;;
+      --table)          tables+=("$2"); shift 2;;
+      --merge)          merge_spec="$2"; shift 2;;
       --order-by)       order_sql="$2"; shift 2;;
       --limit)          limit_sql="$2"; shift 2;;
       --columns)        explicit_columns="$2"; shift 2;;
@@ -179,12 +213,117 @@ command_query() {
       --no-params)      PARAM_PREF="off"; PARAM_STATE=""; shift;;
       --)               shift; break;;
       -*)               fatal "unknown query option: $1";;
-      *)                fatal "unexpected argument: $1";;
+      *)                positional_columns+=("$1"); shift;;
     esac
   done
 
+  while [[ $# -gt 0 ]]; do
+    positional_columns+=("$1"); shift
+  done
+
+  if [[ ${#tables[@]} -eq 0 ]]; then
+    tables=("defs")
+  fi
+  table="${tables[0]}"
+
+  if [[ ${#tables[@]} -gt 1 && -z "$merge_spec" ]]; then
+    fatal "multiple --table values require --merge to define join columns"
+  fi
+  if [[ -n "$merge_spec" && ${#tables[@]} -lt 2 ]]; then
+    fatal "--merge requires at least two --table entries"
+  fi
+
   ensure_db
   init_param_mode
+
+  if [[ ${#tables[@]} -gt 1 ]]; then
+    if [[ -n "$type_filter" || -n "$relpath_filter" || -n "$signature_filter" || -n "$params_filter" || -n "$desc_filter" || -n "$file_desc_filter" || -n "$change_filter" || -n "$refers_to" || -n "$referenced_by" || -n "$id_filter" ]]; then
+      fatal "specialized filters like --type/--relpath are not supported with multi-table queries"
+    fi
+    if [[ ${#search_terms[@]} -gt 0 ]]; then
+      fatal "--search terms are not supported with multi-table queries; run per-table instead"
+    fi
+
+    local sanitized_tables=()
+    for tbl in "${tables[@]}"; do
+      sanitized_tables+=("$(sanitize_identifier "$tbl")")
+    done
+
+    IFS=',' read -r -a merge_cols <<< "$merge_spec"
+    if [[ ${#merge_cols[@]} -ne ${#tables[@]} ]]; then
+      fatal "--merge must provide one column per --table entry"
+    fi
+    local sanitized_merge=()
+    for col in "${merge_cols[@]}"; do
+      col="${col//[[:space:]]/}"
+      sanitized_merge+=("$(sanitize_column_ref "$col")")
+    done
+
+    local base_table="${sanitized_tables[0]}"
+    local base_merge_col="${sanitized_merge[0]}"
+    from_clause="$base_table"
+    for idx in "${!sanitized_tables[@]}"; do
+      if [[ $idx -eq 0 ]]; then
+        continue
+      fi
+      from_clause+=" JOIN ${sanitized_tables[$idx]} ON ${sanitized_merge[$idx]} = $base_merge_col"
+    done
+
+    if [[ -n "$explicit_columns" ]]; then
+      select_clause="$explicit_columns"
+    elif [[ ${#positional_columns[@]} -gt 0 ]]; then
+      local sanitized_cols=()
+      for col in "${positional_columns[@]}"; do
+        sanitized_cols+=("$(sanitize_select_expression "$col")")
+      done
+      select_clause="$(join_with ', ' "${sanitized_cols[@]}")"
+    else
+      select_clause="*"
+    fi
+    [[ $count_mode -eq 1 ]] && select_clause="COUNT(*)"
+    [[ $distinct_mode -eq 1 && $count_mode -eq 0 ]] && select_clause="DISTINCT $select_clause"
+
+    local where_clauses=("1=1")
+    for i in "${!filters_cols[@]}"; do
+      local col="${filters_cols[$i]}"
+      local val="${filters_vals[$i]}"
+      [[ -n "$col" ]] || continue
+      local ref="$(sanitize_column_ref "$col")"
+      where_clauses+=("$ref LIKE $(sql_quote "$(wrap_like "$val")")")
+    done
+    if [[ -n "$explicit_where" ]]; then
+      where_clauses+=("($explicit_where)")
+    fi
+
+    local where_sql="WHERE $(join_with ' AND ' "${where_clauses[@]}")"
+    local order_clause=""
+    [[ $count_mode -eq 0 && -n "$order_sql" ]] && order_clause="ORDER BY $order_sql"
+    local limit_clause=""
+    [[ -n "$limit_sql" ]] && limit_clause="LIMIT $limit_sql"
+
+    read -r -d '' SQL_BODY <<SQL || true
+SELECT $select_clause
+FROM $from_clause
+$where_sql
+$order_clause
+$limit_clause;
+SQL
+
+    if [[ $raw_sql -eq 1 ]]; then
+      echo "/* SQL */" >&2
+      echo "$SQL_BODY" >&2
+    fi
+
+    sqlite3 "$DB_PATH" <<EOF
+.timer off
+.headers on
+.mode column
+$SQL_BODY
+EOF
+    return
+  fi
+
+  table="$(sanitize_identifier "$table")"
 
   local search_cols=()
 
@@ -238,6 +377,12 @@ command_query() {
 
   if [[ -n "$explicit_columns" ]]; then
     select_clause="$explicit_columns"
+  elif [[ ${#positional_columns[@]} -gt 0 ]]; then
+    local sanitized_cols=()
+    for col in "${positional_columns[@]}"; do
+      sanitized_cols+=("$(sanitize_select_expression "$col" "$table")")
+    done
+    select_clause="$(join_with ', ' "${sanitized_cols[@]}")"
   fi
   [[ $count_mode -eq 1 ]] && select_clause="COUNT(*)"
   [[ $distinct_mode -eq 1 && $count_mode -eq 0 ]] && select_clause="DISTINCT $select_clause"
@@ -397,13 +542,18 @@ EOF
 }
 
 command_search() {
-  local table="defs"
+  local -a tables=()
   local limit=20
   local passthrough=()
+  local terms=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --table|-t) table="$2"; shift 2;;
-      --limit)    limit="$2"; shift 2;;
+      --table|-t)
+        [[ $# -ge 2 ]] || fatal "--table expects a table name"
+        tables+=("$2"); shift 2;;
+      --limit)
+        [[ $# -ge 2 ]] || fatal "--limit expects a value"
+        limit="$2"; shift 2;;
       --order-by) passthrough+=("--order-by" "$2"); shift 2;;
       --columns)  passthrough+=("--columns" "$2"); shift 2;;
       --change)   passthrough+=("--change" "$2"); shift 2;;
@@ -413,23 +563,38 @@ command_search() {
       --distinct) passthrough+=("--distinct"); shift;;
       --count)    passthrough+=("--count"); shift;;
       --help|-h)  usage; exit 0;;
-      --) shift; break;;
+      --)
+        shift
+        while [[ $# -gt 0 ]]; do
+          terms+=("$1"); shift
+        done
+        break
+        ;;
       -* ) fatal "unknown search option: $1";;
-      *) break;;
+      *)
+        terms+=("$1"); shift;;
     esac
   done
-  local terms=()
-  while [[ $# -gt 0 ]]; do
-    terms+=("$1"); shift
-  done
+
+  [[ ${#tables[@]} -gt 0 ]] || tables=("defs")
   [[ ${#terms[@]} -gt 0 ]] || fatal "search requires at least one term"
 
-  local args=("--table" "$table" "--limit" "$limit")
-  args+=("${passthrough[@]}")
-  for term in "${terms[@]}"; do
-    args+=("--search" "$term")
+  local first_table=1
+  for table in "${tables[@]}"; do
+    local args=("--table" "$table" "--limit" "$limit")
+    args+=("${passthrough[@]}")
+    for term in "${terms[@]}"; do
+      args+=("--search" "$term")
+    done
+    if [[ ${#tables[@]} -gt 1 ]]; then
+      if [[ $first_table -eq 0 ]]; then
+        printf '\n'
+      fi
+      printf '%s\n' "-- $table --"
+      first_table=0
+    fi
+    command_query "${args[@]}"
   done
-  command_query "${args[@]}"
 }
 
 parse_assignments() {

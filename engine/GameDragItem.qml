@@ -67,13 +67,16 @@ AbstractGameItem {
             ScriptAction {
                 script: function() {
                     entry.x = dragItemRoot.x
+                    var globXY = entry.mapToGlobal(dragItemRoot.x, dragItemRoot.y)
+                    dragItemRoot.sceneX = globXY.x
+                    dragItemRoot.sceneY = globXY.y
                 }
             }
         }
     }
 
     Behavior on y {
-        enabled: animationEnabledX
+        enabled: animationEnabledY
         ParallelAnimation {
             SequentialAnimation {
                 ScriptAction {
@@ -87,6 +90,9 @@ AbstractGameItem {
             ScriptAction {
                 script: function() {
                     entry.y = dragItemRoot.y
+                    var globXY = entry.mapToGlobal(entry.x, entry.y)
+                    dragItemRoot.sceneX = globXY.x
+                    dragItemRoot.sceneY = globXY.y
                 }
             }
         }

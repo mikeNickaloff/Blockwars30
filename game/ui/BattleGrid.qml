@@ -286,13 +286,20 @@ Item {
             break;
         case "match": {
             const matches = summary && summary.matches ? summary.matches : [];
+            updateBlockScenePositions();
             if (matches.length)
                 requestState("launch");
+            if (!matches.length)
+                requestState("idle")
             break;
         }
         case "launch":
             requestState("compact");
             break;
+        case "idle": {
+            updateBlockScenePositions()
+            break;
+        }
         default:
             break;
         }
@@ -476,6 +483,8 @@ Item {
                 dragItem.startedMoving.connect(dragItem.entry.startedMoving)
                 dragItem.stoppedMoving.connect(dragItem.entry.stoppedMoving)
                 dragItem.y = pos.y;
+                dragItem.sceneX = root.mapToGlobal(pos.x, pos.y).x
+                dragItem.sceneY = root.mapToGlobal(pos.x, pos.y).y
             }
         }
     }
@@ -505,6 +514,21 @@ Item {
 
     function spawnMissingBlocks() {
         fillGrid();
+    }
+    function updateBlockScenePositions() {
+        for (var row = 0; row < gridRows; ++row) {
+            for (var column = 0; column < gridCols; ++column) {
+                var wrapper = getBlockWrapper(row, column)
+                if (!wrapper) {
+                    continue;
+                }
+                var globX = wrapper.mapToGlobal(wrapper.x, wrapper.y).x
+                var globY = wrapper.mapToGlobal(wrapper.x, wrapper.y).y
+                wrapper.sceneX = globX
+                wrapper.sceneY = globY
+
+            }
+        }
     }
 
     function fillMissingBlocks() {

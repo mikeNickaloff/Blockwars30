@@ -475,8 +475,8 @@ INSERT INTO defs VALUES(484,74,'function','ref','Validates dotted table.column r
 INSERT INTO defs VALUES(485,74,'function','None','Detects whether sqlite3 supports .parameter bindings and remembers the result.','init_param_mode()');
 INSERT INTO defs VALUES(486,74,'function','delimiter, values...','Joins non-empty strings with the requested delimiter for SQL assembly.','join_with(delimiter, values...)');
 INSERT INTO defs VALUES(487,74,'function','term, columns...','Constructs a case-insensitive LIKE clause that spans several columns.','build_search_clause(term, columns...)');
-INSERT INTO defs VALUES(488,74,'function','args...','Implements the flexible query subcommand including fuzzy search and table-aware filters.','command_query(args...)');
-INSERT INTO defs VALUES(489,74,'function','args...','Convenience wrapper that expands natural text terms into query filters.','command_search(args...)');
+INSERT INTO defs VALUES(488,74,'function','args...','Implements the flexible query subcommand with table-aware filters, column selection helpers, and optional multi-table merge joins.','command_query(args...)');
+INSERT INTO defs VALUES(489,74,'function','args...','Convenience wrapper that expands natural text terms into query filters across one or more tables while forwarding shared query options.','command_search(args...)');
 INSERT INTO defs VALUES(490,74,'function','names_ref, values_ref, pairs...','Separates key=value pairs into aligned arrays for insert and update helpers.','parse_assignments(names_ref, values_ref, pairs...)');
 INSERT INTO defs VALUES(491,74,'function','table, assignments...','Adds rows to any WHEEL.db table while echoing the inserted row id.','command_insert(table, assignments...)');
 INSERT INTO defs VALUES(492,74,'function','table, options...','Updates rows in a table with --set/-–where handling and change counts.','command_update(table, options...)');
@@ -485,8 +485,9 @@ INSERT INTO defs VALUES(494,74,'function','table, options...','Shows table schem
 INSERT INTO defs VALUES(495,74,'function','change_id','Summarises a change id with related files, defs, and todo entries for planning.','command_plan(change_id)');
 INSERT INTO defs VALUES(496,74,'function','sql...','Runs arbitrary SQL snippets or drops into interactive sqlite3 when no SQL is given.','command_raw(sql...)');
 INSERT INTO defs VALUES(497,74,'function','argv...','Parses global switches, resolves subcommands, and routes execution accordingly.','main(argv...)');
-INSERT INTO defs VALUES(498,51,'function',NULL,'Removes the provided GameDragItem wrapper using optional precomputed coordinates before destroying both the wrapper and its block entry.','teardownWrapper(wrapper, location)');
-INSERT INTO defs VALUES(499,51,'function',NULL,'Scans the grid for wrappers whose entries are marked destroyed, tears them down via the helper, and returns the number of removals.','purgeDestroyedBlocks()');
+INSERT INTO defs VALUES(498,43,'function','_x, _y, matchString','Collects registered scene items into an array, optionally filtering by name substring and requiring a point to fall within each bounding box for drag/drop queries.','listSceneDropItemsAt(_x = -1, _y = -1, matchString = "")');
+INSERT INTO defs VALUES(499,43,'function','_itemName, matchstring','Returns scene items whose names include the optional filter and whose global bounds overlap the given items bounds.','listOverlappingItems(_itemName, matchstring = "")');
+INSERT INTO defs VALUES(500,43,'function','a, b','Determines whether two bounding box objects overlap by comparing their horizontal and vertical ranges.','rectsOverlap(a, b)');
 CREATE TABLE refs (
   id INTEGER PRIMARY KEY,
   def_id INTEGER NOT NULL,
@@ -526,7 +527,11 @@ INSERT INTO changes VALUES(23,'BattleGrid progressive state workflow','Implement
 INSERT INTO changes VALUES(24,'BattleGrid compact lifecycle','Wire compact state into queue processing so blocks collapse toward launch direction.','Complete');
 INSERT INTO changes VALUES(25,'BattleGrid queued state lifecycles','Recreate queue-driven base/progressive/completed state handling to avoid recursion and honor animations.','InProgress');
 INSERT INTO changes VALUES(26,'Enhance wheel.sh CLI','Add comprehensive CRUD operations and flexible queries for WHEEL.db automation','InProgress');
-INSERT INTO changes VALUES(27,'BattleGrid destroyed block cleanup','Remove destroyed block wrappers prior to compaction to avoid lingering references.','Complete');
+INSERT INTO changes VALUES(27,'Add listSceneDropItemsAt helper','Implement filtering accessor for scene drop items','Complete');
+INSERT INTO changes VALUES(28,'Add listOverlappingItems helper','Provide overlap detection between scene items with optional name filtering','Complete');
+INSERT INTO changes VALUES(29,'Enhance wheel.sh CLI commands','Support richer table selection, column filtering, and merged query output per new CLI syntax','Complete');
+INSERT INTO changes VALUES(30,'Refine overlap detection','Adjust listOverlappingItems to use explicit axis overlap checks','Complete');
+INSERT INTO changes VALUES(31,'Align rect overlap logic','Update GameScene rectsOverlap to mirror axis-aligned bounding box tests for consistent collision detection.','Complete');
 CREATE TABLE change_files (
   id INTEGER PRIMARY KEY,
   change_id INTEGER NOT NULL,
@@ -588,7 +593,11 @@ INSERT INTO change_files VALUES(51,23,73);
 INSERT INTO change_files VALUES(52,24,51);
 INSERT INTO change_files VALUES(53,25,51);
 INSERT INTO change_files VALUES(54,26,74);
-INSERT INTO change_files VALUES(55,27,51);
+INSERT INTO change_files VALUES(55,27,43);
+INSERT INTO change_files VALUES(56,28,43);
+INSERT INTO change_files VALUES(57,29,74);
+INSERT INTO change_files VALUES(58,30,43);
+INSERT INTO change_files VALUES(59,31,43);
 CREATE TABLE change_defs (
   id INTEGER PRIMARY KEY,
   change_id INTEGER NOT NULL,
@@ -804,9 +813,12 @@ INSERT INTO change_defs VALUES(202,26,74,494,'Record describe subcommand for sch
 INSERT INTO change_defs VALUES(203,26,74,495,'Document change planning summary subcommand.');
 INSERT INTO change_defs VALUES(204,26,74,496,'Document raw SQL runner interface.');
 INSERT INTO change_defs VALUES(205,26,74,497,'Track main dispatcher for wheel.sh.');
-INSERT INTO change_defs VALUES(206,27,51,470,'Call destroyed block cleanup when compact lifecycle begins.');
-INSERT INTO change_defs VALUES(207,27,51,498,'Add teardownWrapper helper to centralize wrapper disposal.');
-INSERT INTO change_defs VALUES(208,27,51,499,'Introduce purgeDestroyedBlocks lifecycle cleanup before compaction.');
+INSERT INTO change_defs VALUES(206,27,43,498,'Add listSceneDropItemsAt helper function filtering sceneItems');
+INSERT INTO change_defs VALUES(207,28,43,499,'Add listOverlappingItems function detecting overlap with scene items');
+INSERT INTO change_defs VALUES(208,29,74,488,'Extend search/query commands to accept multiple tables, column filters, and merge outputs');
+INSERT INTO change_defs VALUES(209,29,74,489,'Extend command_search to support multi-table searches and mixed term order');
+INSERT INTO change_defs VALUES(210,30,43,499,'Tighten overlap detection by explicit axis comparisons');
+INSERT INTO change_defs VALUES(211,31,43,500,'Tighten rectsOverlap detection to use axis-aligned bounding box intersection test.');
 CREATE TABLE todo (
   id INTEGER PRIMARY KEY,
   change_id INTEGER NOT NULL,
@@ -888,8 +900,10 @@ INSERT INTO todo VALUES(68,25,181,53,'Use isPromiseLike to await async lifecycle
 INSERT INTO todo VALUES(69,25,182,53,'Chain lifecycle completions to subsequent base states based on outcome.');
 INSERT INTO todo VALUES(70,25,183,53,'Implement findWrapperPosition to support moveWrapper without custom wrapper properties.');
 INSERT INTO todo VALUES(71,26,184,54,'Implement enhanced wheel.sh CLI with CRUD tooling and flexible queries.');
-INSERT INTO todo VALUES(72,27,206,NULL,'Wire compact lifecycle start to purge destroyed blocks.');
-INSERT INTO todo VALUES(73,27,207,NULL,'Create teardownWrapper helper that clears matrix, instances, and destroys entries.');
-INSERT INTO todo VALUES(74,27,208,NULL,'Implement purgeDestroyedBlocks iteration that invokes teardown helper.');
-INSERT INTO todo VALUES(75,27,NULL,55,'Update BattleGrid lifecycle cleanup for destroyed wrappers.');
+INSERT INTO todo VALUES(72,27,206,55,'Implement listSceneDropItemsAt filtering logic for sceneItems');
+INSERT INTO todo VALUES(73,28,207,56,'Implement listOverlappingItems overlap detection in GameScene');
+INSERT INTO todo VALUES(74,29,208,57,'Update wheel.sh to handle new search/query CLI syntax with multi-table and column merges');
+INSERT INTO todo VALUES(75,29,209,57,'Update command_search to accept repeated --table flags and mixed term ordering');
+INSERT INTO todo VALUES(76,30,210,58,'Update listOverlappingItems to use explicit in-bounds X/Y overlap checks');
+INSERT INTO todo VALUES(77,31,211,59,'Update rectsOverlap to use axis-aligned bounding box overlap conditions.');
 COMMIT;

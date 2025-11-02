@@ -19,13 +19,22 @@ Item {
     property int maxRows: 0
     property var blockState: "init"
 
+
     property Component launchComponent: blockLaunchComponent
     property Component idleComponent: blockIdleComponent
     property Component explodeComponent: blockExplodeComponent
     property var lowerBlockRefs: []
 
     signal blockDestroyed(var itemName)
+    signal modifiedBlockGridCell()
 
+    onRowChanged: {
+
+     modifiedBlockGridCell()
+    }
+    onColumnChanged: {
+        modifiedBlockGridCell()
+    }
 
     Component.onCompleted: {
         blockRoot.blockState = "idle"
