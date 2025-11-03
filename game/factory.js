@@ -35,7 +35,22 @@ function createBlock(blockComp, dragComp, parent, gameScene, opts) {
         : 0;
     const targetX = x;
     const targetY = y;
-    const spawnY = spawnFromAbove ? (targetY - dropOffsetY) : targetY;
+    const launchDirection = parent && parent.launchDirection
+        ? parent.launchDirection.toString().toLowerCase()
+        : "";
+    const rowHeight = (opts.rowHeight !== undefined) ? opts.rowHeight : height;
+    const spawnOffsetRows = (opts.spawnOffsetRows !== undefined) ? opts.spawnOffsetRows : 5;
+
+    let spawnY;
+    if (launchDirection === "down") {
+        spawnY = targetY - rowHeight * spawnOffsetRows;
+    } else if (launchDirection === "up") {
+        spawnY = targetY + rowHeight * spawnOffsetRows;
+    } else if (spawnFromAbove) {
+        spawnY = targetY - dropOffsetY;
+    } else {
+        spawnY = targetY + dropOffsetY;
+    }
 
     // Generate unique runtime names. QML 'id' is compile-time; use objectName/itemName.
     const blockName = uid(`${namePrefix}_core`);
@@ -49,7 +64,9 @@ function createBlock(blockComp, dragComp, parent, gameScene, opts) {
         width: width,
         height: height,
         // your UI.Block API
-        blockColor: color
+        blockColor: color,
+                                                                   battleGrid: parent
+
     }, opts.blockProps || {}));
 
     if (!block) throw new Error("Failed to create UI.Block");
@@ -156,4 +173,16 @@ function createBlock(blockComp, dragComp, parent, gameScene, opts) {
     }
 
     return dragItem;
+}
+
+function registerBattleGrid(battleGrid) {
+    if (!battleGrid || battleGrid.__launchRelayRegistered)
+        return;
+
+    battleGrid.__launchRelayRegistered = true;
+
+    if (battleGrid.distributeBlockLaunchPayload && typeof battleGrid.distributeBlockLaunchPayload.connect === "function" &&
+            typeof battleGrid.receiveLocalBlockLaunchPayload === "function") {
+        battleGrid.distributeBlockLaunchPayload.connect(battleGrid.receiveLocalBlockLaunchPayload);
+    }
 }

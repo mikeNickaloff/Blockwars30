@@ -18,6 +18,10 @@ Item {
     signal queueItemStarted(var item)
     signal queueItemCompleted(var item, var context)
     signal wrapperLaunched(var wrapperItem)
+    signal distributeBlockLaunchPayload(var payload)
+    signal distributedBlockLaunchPayload(var payload)
+    signal informBlockLaunchEndPoint(var payload, var endX, var endY)
+
     // Grid configuration.
     property int gridCols: 6
     property int gridRows: 6
@@ -34,6 +38,9 @@ Item {
     property string launchDirection: "down"
     readonly property var blockPalette: ["red", "blue", "green", "yellow"]
     readonly property string blockIdPrefix: "grid_block"
+
+    property string uuid: Factory.uid("battleGrid")
+    property int mainHealth: 100
 
     property string currentState: "init"
     property string previousState: ""
@@ -89,6 +96,8 @@ Item {
             }
         }
     });
+
+    property var __launchRelayRegistered: false
 
     function normalizeStateName(value) {
         if (value === null || value === undefined)
@@ -286,7 +295,7 @@ Item {
             break;
         case "match": {
             const matches = summary && summary.matches ? summary.matches : [];
-            updateBlockScenePositions();
+           // updateBlockScenePositions();
             if (matches.length)
                 requestState("launch");
             if (!matches.length)
@@ -298,6 +307,10 @@ Item {
             break;
         case "idle": {
             updateBlockScenePositions()
+            break;
+        }
+        case "matched": {
+            requestState("launch");
             break;
         }
         default:
@@ -420,6 +433,10 @@ Item {
         return wrapper ? wrapper.entry : null;
     }
 
+    function getEntryAt(row, column) {
+        return getBlockEntryAt(row, column);
+    }
+
     function moveWrapper(wrapper, targetRow, targetColumn) {
         if (!wrapper)
             return;
@@ -444,7 +461,12 @@ Item {
 
     function fillGrid() {
         ensureMatrix();
-        for (var row = 0; row < gridRows; ++row) {
+        const fillDescending = normalizeStateName(launchDirection) === "up";
+        const rowStart = fillDescending ? gridRows - 1 : 0;
+        const rowEnd = fillDescending ? -1 : gridRows;
+        const rowStep = fillDescending ? -1 : 1;
+
+        for (var row = rowStart; row !== rowEnd; row += rowStep) {
             for (var column = 0; column < gridCols; ++column) {
                 if (getBlockWrapper(row, column))
                     continue;
@@ -459,19 +481,15 @@ Item {
                                 width: cellW,
                                 height: cellH,
                                 x: pos.x,
-                                y: pos.y - (cellH * 6),
+                                y: pos.y,
                                 blockProps: {
                                     row: row,
                                     column: column,
                                     maxRows: gridRows,
                                     blockColor: blockPalette[(row + column) % blockPalette.length]
                                 },
-                                dragProps: {
-                                    width: cellW,
-                                    height: cellH,
-                                    x: pos.x,
-                                    y: pos.y - (cellH * 6)
-                                }
+                                rowHeight: cellH,
+                                spawnOffsetRows: 5
                             });
 
                 if (!dragItem)
@@ -485,29 +503,50 @@ Item {
                 dragItem.y = pos.y;
                 dragItem.sceneX = root.mapToGlobal(pos.x, pos.y).x
                 dragItem.sceneY = root.mapToGlobal(pos.x, pos.y).y
+                dragItem.entry.battleGrid = root;
             }
         }
     }
 
     function compactColumns() {
         ensureMatrix();
+        const gravityDown = normalizeStateName(launchDirection) === "up";
         for (var column = 0; column < gridCols; ++column) {
             var survivors = [];
-            for (var row = gridRows - 1; row >= 0; --row) {
-                const wrapper = getBlockWrapper(row, column);
-                if (wrapper)
-                    survivors.push(wrapper);
-            }
+            if (gravityDown) {
+                for (var row = 0; row < gridRows; ++row) {
+                    const wrapperDown = getBlockWrapper(row, column);
+                    if (wrapperDown)
+                        survivors.push(wrapperDown);
+                }
 
-            var targetRow = gridRows - 1;
-            for (var idx = 0; idx < survivors.length; ++idx) {
-                moveWrapper(survivors[idx], targetRow, column);
-                targetRow -= 1;
-            }
+                var targetRowDown = 0;
+                for (var idxDown = 0; idxDown < survivors.length; ++idxDown) {
+                    moveWrapper(survivors[idxDown], targetRowDown, column);
+                    targetRowDown += 1;
+                }
 
-            while (targetRow >= 0) {
-                clearWrapperAt(targetRow, column);
-                targetRow -= 1;
+                while (targetRowDown < gridRows) {
+                    clearWrapperAt(targetRowDown, column);
+                    targetRowDown += 1;
+                }
+            } else {
+                for (var rowUp = gridRows - 1; rowUp >= 0; --rowUp) {
+                    const wrapperUp = getBlockWrapper(rowUp, column);
+                    if (wrapperUp)
+                        survivors.push(wrapperUp);
+                }
+
+                var targetRowUp = gridRows - 1;
+                for (var idxUp = 0; idxUp < survivors.length; ++idxUp) {
+                    moveWrapper(survivors[idxUp], targetRowUp, column);
+                    targetRowUp -= 1;
+                }
+
+                while (targetRowUp >= 0) {
+                    clearWrapperAt(targetRowUp, column);
+                    targetRowUp -= 1;
+                }
             }
         }
     }
@@ -614,6 +653,103 @@ Item {
         return { matches: matches };
     }
 
+    function receiveLocalBlockLaunchPayload(payload) {
+        if (!payload)
+            return null;
+        const enriched = Object.assign({}, payload, {
+            battleGrid: uuid,
+            uuid: uuid,
+            launchDirection: launchDirection
+        });
+        distributedBlockLaunchPayload(enriched);
+        return enriched;
+    }
+
+    function calculateLaunchDamage(payload) {
+        if (!payload)
+            return { remainingHealth: 0, blocksDamaged: [], directDamage: 0 };
+
+        const column = payload.column;
+        if (column === undefined || column === null || column < 0 || column >= gridCols)
+            return { remainingHealth: payload.health || 0, blocksDamaged: [], directDamage: 0 };
+
+        var remaining = payload.health !== undefined && payload.health !== null ? payload.health : 0;
+        if (remaining <= 0)
+            return { remainingHealth: remaining, blocksDamaged: [], directDamage: 0 };
+
+        ensureMatrix();
+        const damagedBlocks = [];
+        var lastImpact = null;
+        const damageAscending = normalizeStateName(launchDirection) === "up";
+        const rowStart = damageAscending ? 0 : gridRows - 1;
+        const rowEnd = damageAscending ? gridRows : -1;
+        const rowStep = damageAscending ? 1 : -1;
+
+        for (var row = rowStart; row !== rowEnd && remaining > 0; row += rowStep) {
+            const entry = getBlockEntryAt(row, column);
+            if (!entry)
+                continue;
+            const state = normalizeStateName(entry.blockState);
+            if (state && state !== "idle")
+                continue;
+
+            if (entry.health === undefined || entry.health === null)
+                entry.health = 100;
+
+            if (entry.health <= 0)
+                continue;
+
+            const targetHealth = entry.health;
+            if (remaining >= targetHealth) {
+                remaining -= targetHealth;
+                entry.health = 0;
+                entry.blockState = "explode";
+                damagedBlocks.push({ row: row, column: column, destroyed: true });
+                lastImpact = { row: row, column: column };
+            } else {
+                entry.health = targetHealth - remaining;
+                damagedBlocks.push({ row: row, column: column, destroyed: false });
+                remaining = 0;
+                lastImpact = { row: row, column: column };
+            }
+        }
+
+        var directDamage = 0;
+        if (remaining > 0) {
+            const overflow = Math.min(remaining, mainHealth);
+            if (overflow > 0) {
+                mainHealth -= overflow;
+                directDamage = overflow;
+                remaining -= overflow;
+            }
+        }
+
+        const endpointPayload = Object.assign({}, payload, {
+            damagedBlocks: damagedBlocks.slice(),
+            remainingHealth: remaining,
+            directDamage: directDamage
+        });
+
+        var endpointRow;
+        if (lastImpact)
+            endpointRow = lastImpact.row;
+        else
+            endpointRow = damageAscending ? 0 : gridRows - 1;
+        if (endpointRow < 0)
+            endpointRow = 0;
+        else if (endpointRow >= gridRows)
+            endpointRow = gridRows - 1;
+        const endpointCell = cellPosition(endpointRow, column);
+        const endpointGlobal = root.mapToGlobal(endpointCell.x, endpointCell.y);
+        informBlockLaunchEndPoint(endpointPayload, endpointGlobal.x, endpointGlobal.y);
+
+        return {
+            remainingHealth: remaining,
+            blocksDamaged: damagedBlocks,
+            directDamage: directDamage
+        };
+    }
+
     function launchMatchedBlocks() {
         ensureMatrix();
         const launched = [];
@@ -622,12 +758,25 @@ Item {
                 const wrapper = blockMatrix[row][column];
                 if (!wrapper || !wrapper.entry)
                     continue;
-                if (wrapper.entry.blockState === "matched") {
-                    wrapper.entry.blockState = "launch";
-                    if (wrapper.entry.itemName)
-                        launched.push(wrapper.entry.itemName);
-                    wrapperLaunched(wrapper)
-
+                const entry = wrapper.entry;
+                if (entry.blockState === "matched") {
+                    entry.blockState = "launch";
+                    if (entry.health === undefined || entry.health === null)
+                        entry.health = 100;
+                    const globalPoint = wrapper.mapToGlobal(0, 0);
+                    const payload = {
+                        blockName: entry.itemName,
+                        row: entry.row,
+                        column: entry.column,
+                        health: entry.health,
+                        x: globalPoint.x,
+                        y: globalPoint.y,
+                        action: "launch"
+                    };
+                    distributeBlockLaunchPayload(payload);
+                    if (entry.itemName)
+                        launched.push(entry.itemName);
+                    wrapperLaunched(wrapper);
                 }
             }
         }
@@ -671,6 +820,7 @@ Item {
     }
 
     Component.onCompleted: {
+        Factory.registerBattleGrid(root);
         requestState("init");
     }
 }

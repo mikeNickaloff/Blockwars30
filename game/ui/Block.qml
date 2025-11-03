@@ -18,6 +18,8 @@ Item {
     property int column: -1
     property int maxRows: 0
     property var blockState: "init"
+    property var battleGrid
+    property var health: 5
 
 
     property Component launchComponent: blockLaunchComponent

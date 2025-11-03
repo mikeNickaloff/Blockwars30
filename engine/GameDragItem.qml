@@ -19,8 +19,8 @@ AbstractGameItem {
     property bool dragActive: false
 
     property var payload: []
-    property var animationDurationX: 200
-    property var animationDurationY: 200
+    property var animationDurationX: 60
+    property var animationDurationY: 360
     property bool animationEnabledX: true
     property bool animationEnabledY: true
 

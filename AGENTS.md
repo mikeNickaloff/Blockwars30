@@ -28,38 +28,41 @@
 > * `refs` (id, def_id, reference_def_id) // will have all references for every definition stored here for rapid lookup of public constructs and definitions
 > * `changes` (id, title,  context, status) // will be for change tracking
 > * `todo` (id, change_id, def_id, file_id, change_id, description) // todo items to be done, one item for each definition in each definition of each file that is to be added or changed or removed. Must have all fields completed before starting work
+>
+> [OPTIONAL] `change_files` (id, change_id, file_id) // optional chage file tracking per change (for complex tasks with many changes across multiple files)
+> [OPTIONAL] `change_defs` (id, change_id, file_id, def_id) // optional definition tracking per change (for complex tasks with many changes to many definitions)
 
 - chmod +x wheel.sh 
 
+- wheel.sh will verify and import the database from WHEEL.sql if none is present. 
+- if WHEEL.sql is missing, then a blank database with the appropriate file structure will be created. 
+- When a blank WHEEL.db is created from the condition where no WHEEL.db and no WHEEL.sql were present,  ask the user if they would like you to scan the project folders and build the database first (highly recommended). Also let them know that Yes is the safest option. Of course, if they chose "no" then print the message "Warning: AGENT running without building database -- expect long waits." 
 
 
 
 ### sqlite3 database tools for WHEEL.db 
 
 #### wheel.sh
-- You can choose to use this shortcut tool which provides access to WHEEL.db through a convenience shell script: ``` wheel.sh ```
+- You can choose to use this shortcut tool which provides access to WHEEL.db through a convenience shell script: 
+> ``` wheel.sh ```
 - Many common operations are already supported and relevant data can quickly be accessed.
 
-- There are many more use cases for wheel.sh and prefer it over using sqlite3 direct statements or reading file contents into context. ``` ./wheel.sh --help```
+- There are many more use cases for wheel.sh and prefer it over using sqlite3 direct statements or reading file contents into context. 
+> ``` ./wheel.sh --help```
 
 
 #### Uses
 
 - Use wheel.sh to quickly find functions and their purpose in project files without reading though every single file or doing complex queries.
-- Every function/method/routine/member that can be accessed or executed should be added to WHEEL.db (sqlite database) with the signature and parameters whenever new code is added.
-- Always check with wheel.sh to see what other things have already been invented in this project before creating implementation steps or writing code.
-- WHEEL.db is to be updated with a list of every file and every function/property available in each file in the project along with a descriptive paragraph between one and 3 sentences explainer as to what it does, what it effects, and any special considerations that are not immediately obvious.
-- Always reference wheel.sh or WHEEL.db directly when writing code and utilize existing types or helpers when possible instead of creating new ones. Try to use base classes to decrease the amount of overall code paths in the application by reusing existing ones when possible.
-
-- Before making any changes, create a new change row in WHEEL.db then add new rows for change_files and change_defs for each file / definition to be added.
+- Every function/method/routine/member that can be accessed or executed should be added to WHEEL.db via` wheel.sh` with the signature and parameters whenever new code is added.
+- Always check with `wheel.sh` output to see what other things have already been invented in this project before creating implementation steps or writing code.
+- Always reference `wheel.sh` output when directly when writing code and utilize existing types or helpers when possible instead of creating new ones. Try to use base classes to decrease the amount of overall code paths in the application by reusing existing ones when possible.
+- Before making any changes, create a new change entry using `wheel.sh` then add new rows for change_files and change_defs for each file / definition to be added.
 - Once finished with the change table, then use select commands with inner join to get list of all files and defs that need to be changed and create todo items based on that output.
 - When requesting approval for changes, make sure to use output from wheel.sh for providing data. do not rely on internal memory only.
-- After making changes to WHEEL.db, use sqlite3 to dump the database to WHEEL.sql with the command 
-> ``` sqlite3 WHEEL.db .dump > WHEEL.sql ``` 
-- Do not verify that wheel.sql has been updated after dumping the database.
-
+- Do not verify that WHEEL.sql has been updated after dumping the database.
 - If sqlite3 not available on system, silently ignore this section.
-
+- Do not read `WHEEL.sql` into the internal agent context.
 
 
 # GENERAL CODING SUGGESTIONS

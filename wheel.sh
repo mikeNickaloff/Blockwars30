@@ -42,6 +42,36 @@ debug() {
   fi
 }
 
+resolve_sql_seed_path() {
+  local db_path="$1"
+  local dir="."
+  local name="$db_path"
+
+  if [[ "$db_path" == */* ]]; then
+    dir="${db_path%/*}"
+    name="${db_path##*/}"
+    [[ -n "$dir" ]] || dir="."
+  fi
+
+  if [[ -z "$name" ]]; then
+    fatal "invalid database path: $db_path"
+  fi
+
+  local base="$name"
+  if [[ "$name" == *.* ]]; then
+    base="${name%.*}"
+    if [[ -z "$base" ]]; then
+      base="$name"
+    fi
+  fi
+
+  if [[ "$dir" == "." || -z "$dir" ]]; then
+    printf './%s.sql' "$base"
+  else
+    printf '%s/%s.sql' "$dir" "$base"
+  fi
+}
+
 ensure_db() {
   local db_exists=0
   if [[ -f "$DB_PATH" ]]; then
@@ -56,12 +86,14 @@ ensure_db() {
     return
   fi
 
-  local sql_seed="./WHEEL.sql"
+  local sql_seed
   local target_db="./WHEEL.db"
 
   if [[ "$DB_PATH" != "WHEEL.db" && "$DB_PATH" != "./WHEEL.db" ]]; then
     target_db="$DB_PATH"
   fi
+
+  sql_seed="$(resolve_sql_seed_path "$target_db")"
 
   if [[ -f "$sql_seed" ]]; then
     debug "bootstrapping database from $sql_seed"
@@ -69,7 +101,68 @@ ensure_db() {
     return
   fi
 
-  fatal "database not found: $DB_PATH"
+  debug "initializing new database schema at $target_db"
+  sqlite3 "$target_db" <<'SQL' || fatal "failed to initialize blank database schema"
+BEGIN;
+CREATE TABLE IF NOT EXISTS files (
+  id INTEGER PRIMARY KEY,
+  relpath TEXT UNIQUE NOT NULL,
+  description TEXT
+);
+CREATE TABLE IF NOT EXISTS defs (
+  id INTEGER PRIMARY KEY,
+  file_id INTEGER NOT NULL,
+  type TEXT NOT NULL,
+  signature TEXT,
+  parameters TEXT,
+  description TEXT,
+  FOREIGN KEY(file_id) REFERENCES files(id)
+);
+CREATE TABLE IF NOT EXISTS refs (
+  id INTEGER PRIMARY KEY,
+  def_id INTEGER NOT NULL,
+  reference_def_id INTEGER NOT NULL,
+  FOREIGN KEY(def_id) REFERENCES defs(id),
+  FOREIGN KEY(reference_def_id) REFERENCES defs(id)
+);
+CREATE TABLE IF NOT EXISTS changes (
+  id INTEGER PRIMARY KEY,
+  title TEXT NOT NULL,
+  context TEXT,
+  status TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS change_files (
+  id INTEGER PRIMARY KEY,
+  change_id INTEGER NOT NULL,
+  file_id INTEGER NOT NULL,
+  FOREIGN KEY(change_id) REFERENCES changes(id),
+  FOREIGN KEY(file_id) REFERENCES files(id)
+);
+CREATE TABLE IF NOT EXISTS change_defs (
+  id INTEGER PRIMARY KEY,
+  change_id INTEGER NOT NULL,
+  file_id INTEGER NOT NULL,
+  def_id INTEGER,
+  description TEXT,
+  FOREIGN KEY(change_id) REFERENCES changes(id),
+  FOREIGN KEY(file_id) REFERENCES files(id),
+  FOREIGN KEY(def_id) REFERENCES defs(id)
+);
+CREATE TABLE IF NOT EXISTS todo (
+  id INTEGER PRIMARY KEY,
+  change_id INTEGER NOT NULL,
+  change_defs_id INTEGER,
+  change_files_id INTEGER,
+  description TEXT NOT NULL,
+  FOREIGN KEY(change_id) REFERENCES changes(id),
+  FOREIGN KEY(change_defs_id) REFERENCES change_defs(id),
+  FOREIGN KEY(change_files_id) REFERENCES change_files(id)
+);
+COMMIT;
+SQL
+
+  debug "dumping freshly initialized database schema to $sql_seed"
+  sqlite3 "$target_db" .dump > "$sql_seed" || fatal "failed to dump database to $sql_seed"
 }
 
 refresh_sql_dump() {
@@ -78,7 +171,7 @@ refresh_sql_dump() {
     return
   fi
 
-  local dump_target="./WHEEL.sql"
+  local dump_target="$(resolve_sql_seed_path "$DB_PATH")"
   local source_db="$DB_PATH"
 
   debug "refreshing $dump_target from $source_db"

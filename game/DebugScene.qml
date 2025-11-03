@@ -10,6 +10,56 @@ Engine.GameScene {
     anchors.fill: parent
     property var blocks: []
     property alias checkRefillTimer: checkRefillTimer
+    property var currentTurn: "top"
+    property var battleGrid: getBattleGridOffense()
+    property var turnsLeft: 3
+
+    function getBattleGridOffense() {
+
+        if (currentTurn == "top") { return battleGrid_top } else { return battleGrid_bottom }
+    }
+
+    function receiveBattleGridLaunchPayload(payload) {
+        if (!payload || !payload.battleGrid)
+            return;
+
+        var sourceGrid = null;
+        if (battleGrid_top.uuid === payload.battleGrid)
+            sourceGrid = battleGrid_top;
+        else if (battleGrid_bottom.uuid === payload.battleGrid)
+            sourceGrid = battleGrid_bottom;
+
+        if (!sourceGrid)
+            return;
+
+        const targetBattleGrid = sourceGrid === battleGrid_top ? battleGrid_bottom : battleGrid_top;
+        if (!targetBattleGrid || typeof targetBattleGrid.calculateLaunchDamage !== "function")
+            return;
+
+        targetBattleGrid.calculateLaunchDamage(payload);
+    }
+
+    function forwardBlockLaunchEndPoint(payload, endX, endY) {
+        if (!payload || !payload.uuid)
+            return;
+
+        var originalBattleGrid = null;
+        if (battleGrid_top.uuid === payload.uuid)
+            originalBattleGrid = battleGrid_top;
+        else if (battleGrid_bottom.uuid === payload.uuid)
+            originalBattleGrid = battleGrid_bottom;
+
+        if (!originalBattleGrid || typeof originalBattleGrid.getEntryAt !== "function")
+            return;
+
+        const entry = originalBattleGrid.getEntryAt(payload.row, payload.column);
+        if (!entry)
+            return;
+
+        if (endY !== undefined && endY !== null)
+            entry.y = endY;
+        entry.blockState = "launch";
+    }
    /* Engine.GameDragItem {
         id: test_rect
 
@@ -92,7 +142,7 @@ Engine.GameScene {
     property int launchIndex: 0
     Timer {
         id: checkRefillTimer
-        interval: 1000
+        interval: 200
         repeat: false
         triggeredOnStart: false
         running: false
@@ -135,15 +185,22 @@ onItemDroppedNowhere: function(itemName) {
     snapItemToGrid(dragItem, dragItem.entry.row, dragItem.entry.column)
 }
     onItemDroppedInNonDropArea: function(dragItemName, dropItemName, startx, starty, endx, endy) {
+        function snapItemToGrid(item, row, col) {
+                var bg = getBattleGridOffense();
+            item.x = bg.cellPosition(row, col).x
+            item.y = bg.cellPosition(row, col).y
+
+
+        }
+
         var dragItem = getSceneItem(dragItemName);
         var dropItem = getSceneItem(dropItemName)
+        if (dragItem.entry.battleGrid !== getBattleGridOffense()) { snapItemToGrid(dragItem, dragItem.entry.row, dragItem.entry.col); return }
+        if (dropItem.entry.battleGrid !== getBattleGridOffense()) { snapItemToGrid(dragItem, dragItem.entry.row, dragItem.entry.col); return }
+
         if ((dragItemName.indexOf("block_drag") == 0) && (dropItemName.indexOf("block_drag") == 0)) {
 
-            function snapItemToGrid(item, row, col) {
-                item.x = battleGrid.cellPosition(row, col).x
-                item.y = battleGrid.cellPosition(row, col).y
 
-            }
 
             // switch request..
             var row1 = dragItem.entry.row
@@ -165,11 +222,26 @@ onItemDroppedNowhere: function(itemName) {
             snapItemToGrid(dropItem, row1, col1)
 
             console.log("got valid swap  -- ",dragItemName, dropItemName, startx, starty, endx, endy)
+            var bg = getBattleGridOffense();
+            bg.blockMatrix[row1][col1] = dropItem
+            bg.blockMatrix[row2][col2] = dragItem
+            checkRefillTimer.start()
+            bg.requestState("match")
+            turnsLeft--
 
 
         }
 
     }
+
+    onTurnsLeftChanged: {
+        if (turnsLeft <= 0) {
+            if (currentTurn == "top") { currentTurn = "bottom"; } else { currentTurn = "top"; }
+            turnsLeft = 3;
+            console.log("turn switched to",currentTurn);
+        }
+    }
+
     onItemEnteredNonDropArea: {
         console.log("item dragged and entered non-drop area", dragItemName, dropItemName)
     }
@@ -231,11 +303,26 @@ onItemDroppedNowhere: function(itemName) {
     }
 
     UI.BattleGrid {
-        id:battleGrid
+        id:battleGrid_top
         width: 300
         height: 300
-        x: 100
-        y: 200
+        x: 200
+        y: 0
+        gameScene: debugScene
+
+        launchDirection: "down"
+
+        Component.onCompleted: {
+
+        }
+    }
+
+    UI.BattleGrid {
+        id:battleGrid_bottom
+        width: 300
+        height: 300
+        x: 200
+        y: 400
         gameScene: debugScene
 
         launchDirection: "up"
@@ -245,109 +332,129 @@ onItemDroppedNowhere: function(itemName) {
         }
     }
 
-
-
-    Item {
-        width: 600
-        height: 600
-
-        Repeater {
-            model: 15
-            delegate: Rectangle {
-                required property var index
-                required property var model
-                PathInterpolator {
-
-                      id: motionPath
-                      progress: index / 15
-
-
-
-                      NumberAnimation on progress {
-
-                          from: index / 15
-                          to: 1.0
-                          running: true
-                          duration: 3000
-                          loops: NumberAnimation.Infinite
-                      }
-
-                      path: Path {
-                    startX: 100; startY: 100
-
-                    PathArc {
-                        x: 300; y: 300
-                        radiusX: 200 - (10 * index); radiusY: 200 - (10 * index)
-                        useLargeArc: true
-
-                    }
-                }
-                }
-
-                Component.onCompleted: {
-                   // motionPath.progressChanged.connect(delegate.updateProgress)
-                }
-                function updateProgress(new_prog) {
-                    /* motionPath.progress += 0.1
-                    if (motionPath.progress >= 1.0)  { motionPath.progress = 0 }
-                    delegate.x = motionPath.x
-                    delegate.y =motionPath.y */
-
-                }
-                id: delegate
-
-                color: Math.random() < 0.33 ? "red" : (Math.random() < 0.66) ? "blue" : "yellow"
-                x: motionPath.x
-                y: motionPath.y
-                Behavior on x { NumberAnimation { duration: 3000 } }
-                Behavior on y { NumberAnimation { duration: 3000 } }
-                width: height
-                height: 40
-                z: 20
-                transformOrigin: Item.Center
-
-            }
-
-
-            }
-
-
-    }
-
-
-    Item {
-        id: colorRing
-        width: 280
-        height: 280
-        anchors.centerIn: parent
-        property var colorChoices: ["red", "blue", "green", "yellow"]
-        property real angleOffset: 0
-        readonly property int itemCount: 15
-        readonly property real radius: Math.min(width, height) / 2 - 24
-
-        NumberAnimation on angleOffset {
-            from: 0
-            to: 2 * Math.PI
-            duration: 8000
-            loops: Animation.Infinite
-            easing.type: Easing.Linear
-            running: true
+    Connections {
+        target: battleGrid_top
+        function onDistributedBlockLaunchPayload(payload) {
+            receiveBattleGridLaunchPayload(payload);
         }
-
-        Repeater {
-            model: colorRing.itemCount
-            delegate: Rectangle {
-                readonly property real angle: (2 * Math.PI / colorRing.itemCount) * index + colorRing.angleOffset
-                readonly property color rectColor: colorRing.colorChoices[Math.floor(Math.random() * colorRing.colorChoices.length)]
-                width: 32
-                height: 32
-                color: rectColor
-                radius: 6
-                x: colorRing.width / 2 + colorRing.radius * Math.cos(angle) - width / 2
-                y: colorRing.height / 2 + colorRing.radius * Math.sin(angle) - height / 2
-            }
+        function onInformBlockLaunchEndPoint(payload, endX, endY) {
+            forwardBlockLaunchEndPoint(payload, endX, endY);
         }
     }
+
+    Connections {
+        target: battleGrid_bottom
+        function onDistributedBlockLaunchPayload(payload) {
+            receiveBattleGridLaunchPayload(payload);
+        }
+        function onInformBlockLaunchEndPoint(payload, endX, endY) {
+            forwardBlockLaunchEndPoint(payload, endX, endY);
+        }
+    }
+
+
+
+    // Item {
+    //     width: 600
+    //     height: 600
+
+    //     Repeater {
+    //         model: 15
+    //         delegate: Rectangle {
+    //             required property var index
+    //             required property var model
+    //             PathInterpolator {
+
+    //                   id: motionPath
+    //                   progress: index / 15
+
+
+
+    //                   NumberAnimation on progress {
+
+    //                       from: index / 15
+    //                       to: 1.0
+    //                       running: true
+    //                       duration: 3000
+    //                       loops: NumberAnimation.Infinite
+    //                   }
+
+    //                   path: Path {
+    //                 startX: 100; startY: 100
+
+    //                 PathArc {
+    //                     x: 300; y: 300
+    //                     radiusX: 200 - (10 * index); radiusY: 200 - (10 * index)
+    //                     useLargeArc: true
+
+    //                 }
+    //             }
+    //             }
+
+    //             Component.onCompleted: {
+    //                // motionPath.progressChanged.connect(delegate.updateProgress)
+    //             }
+    //             function updateProgress(new_prog) {
+    //                 /* motionPath.progress += 0.1
+    //                 if (motionPath.progress >= 1.0)  { motionPath.progress = 0 }
+    //                 delegate.x = motionPath.x
+    //                 delegate.y =motionPath.y */
+
+    //             }
+    //             id: delegate
+
+    //             color: Math.random() < 0.33 ? "red" : (Math.random() < 0.66) ? "blue" : "yellow"
+    //             x: motionPath.x
+    //             y: motionPath.y
+    //             Behavior on x { NumberAnimation { duration: 3000 } }
+    //             Behavior on y { NumberAnimation { duration: 3000 } }
+    //             width: height
+    //             height: 40
+    //             z: 20
+    //             transformOrigin: Item.Center
+
+    //         }
+
+
+    //         }
+
+
+    // }
+
+
+    // Item {
+    //     id: colorRing
+    //     width: 280
+    //     height: 280
+    //     anchors.centerIn: parent
+    //     property var colorChoices: ["red", "blue", "green", "yellow"]
+    //     property real angleOffset: 0
+    //     readonly property int itemCount: 15
+    //     readonly property real radius: Math.min(width, height) / 2 - 24
+
+    //     NumberAnimation on angleOffset {
+    //         from: 0
+    //         to: 2 * Math.PI
+    //         duration: 8000
+    //         loops: Animation.Infinite
+    //         easing.type: Easing.Linear
+    //         running: true
+    //     }
+
+    //     Repeater {
+    //         model: colorRing.itemCount
+    //         delegate: Rectangle {
+    //             readonly property real angle: (2 * Math.PI / colorRing.itemCount) * index + colorRing.angleOffset
+    //             readonly property color rectColor: colorRing.colorChoices[Math.floor(Math.random() * colorRing.colorChoices.length)]
+    //             width: 32
+    //             height: 32
+    //             color: rectColor
+    //             radius: 6
+    //             x: colorRing.width / 2 + colorRing.radius * Math.cos(angle) - width / 2
+    //             y: colorRing.height / 2 + colorRing.radius * Math.sin(angle) - height / 2
+    //         }
+    //     }
+    // }
 
 
 

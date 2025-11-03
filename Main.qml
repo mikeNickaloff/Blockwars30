@@ -4,8 +4,8 @@ import "game"
 import "lib"
 
 Window {
-    width: 640
-    height: 480
+    width: 840
+    height: 880
     visible: true
     title: qsTr("Hello World")
 
