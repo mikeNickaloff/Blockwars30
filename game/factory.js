@@ -35,21 +35,15 @@ function createBlock(blockComp, dragComp, parent, gameScene, opts) {
         : 0;
     const targetX = x;
     const targetY = y;
-    const launchDirection = parent && parent.launchDirection
-        ? parent.launchDirection.toString().toLowerCase()
-        : "";
-    const rowHeight = (opts.rowHeight !== undefined) ? opts.rowHeight : height;
-    const spawnOffsetRows = (opts.spawnOffsetRows !== undefined) ? opts.spawnOffsetRows : 5;
+    const spawnOffset = (opts.spawnOffset !== undefined) ? opts.spawnOffset : null;
 
     let spawnY;
-    if (launchDirection === "down") {
-        spawnY = targetY - rowHeight * spawnOffsetRows;
-    } else if (launchDirection === "up") {
-        spawnY = targetY + rowHeight * spawnOffsetRows;
+    if (spawnOffset !== null) {
+        spawnY = targetY + spawnOffset;
     } else if (spawnFromAbove) {
         spawnY = targetY - dropOffsetY;
     } else {
-        spawnY = targetY + dropOffsetY;
+        spawnY = targetY;
     }
 
     // Generate unique runtime names. QML 'id' is compile-time; use objectName/itemName.

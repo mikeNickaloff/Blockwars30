@@ -11,18 +11,23 @@ Engine.GameScene {
     property var blocks: []
     property alias checkRefillTimer: checkRefillTimer
     property var currentTurn: "top"
-    property var battleGrid: getBattleGridOffense()
     property var turnsLeft: 3
+    property var turnCoordinator: ({ offense: null, defense: null })
+
+   onCurrentTurnChanged: handleTurnSwitch()
 
     function getBattleGridOffense() {
 
         if (currentTurn == "top") { return battleGrid_top } else { return battleGrid_bottom }
     }
+    function getBattleGridDefense() {
+           if (currentTurn == "top") { return battleGrid_bottom } else { return battleGrid_top }
+    }
 
     function receiveBattleGridLaunchPayload(payload) {
         if (!payload || !payload.battleGrid)
             return;
-
+        console.log("received launch payload", JSON.stringify(payload))
         var sourceGrid = null;
         if (battleGrid_top.uuid === payload.battleGrid)
             sourceGrid = battleGrid_top;
@@ -44,21 +49,96 @@ Engine.GameScene {
             return;
 
         var originalBattleGrid = null;
-        if (battleGrid_top.uuid === payload.uuid)
+        var targetBG
+        if (battleGrid_top.uuid === payload.uuid) {
             originalBattleGrid = battleGrid_top;
-        else if (battleGrid_bottom.uuid === payload.uuid)
+            targetBG = battleGrid_bottom
+        }
+        else if (battleGrid_bottom.uuid === payload.uuid) {
             originalBattleGrid = battleGrid_bottom;
+               targetBG = battleGrid_top
+        }
+
+
 
         if (!originalBattleGrid || typeof originalBattleGrid.getEntryAt !== "function")
             return;
 
-        const entry = originalBattleGrid.getEntryAt(payload.row, payload.column);
+        const entry = originalBattleGrid.getBlockWrapper(payload.row, payload.column);
         if (!entry)
             return;
 
-        if (endY !== undefined && endY !== null)
-            entry.y = endY;
-        entry.blockState = "launch";
+        if (endY !== undefined && endY !== null) {
+            entry.z = 25
+            entry.y = originalBattleGrid.mapFromGlobal(endX, endY).y;
+            console.log("launching to position", entry.y);
+        }
+
+        entry.entry.blockState = "launch";
+    }
+
+    function normalizeState(value) {
+        if (value === null || value === undefined)
+            return "";
+        return value.toString().toLowerCase();
+    }
+
+    function finalizeTurnStateSync() {
+        const offense = turnCoordinator.offense;
+        const defense = turnCoordinator.defense;
+        if (defense && typeof defense.requestState === "function")
+            defense.requestState("wait");
+        if (offense && typeof offense.requestState === "function")
+            offense.requestState("idle");
+        turnStateMonitor.stop();
+        turnCoordinator = { offense: null, defense: null };
+    }
+
+    function synchronizeTurnStateIfReady() {
+        const offense = turnCoordinator.offense;
+        const defense = turnCoordinator.defense;
+        if (!offense || !defense) {
+            turnStateMonitor.stop();
+            return;
+        }
+        if (normalizeState(defense.currentState) === "idle")
+            finalizeTurnStateSync();
+    }
+
+    function handleTurnSwitch() {
+        const offense = getBattleGridOffense();
+        const defense = offense === battleGrid_top ? battleGrid_bottom : battleGrid_top;
+        if (!offense || !defense)
+            return;
+
+        turnCoordinator = { offense: offense, defense: defense };
+
+        if (typeof offense.requestState === "function")
+            offense.requestState("wait");
+
+        if (normalizeState(defense.currentState) === "idle") {
+            finalizeTurnStateSync();
+        } else {
+            if (turnStateMonitor.running)
+                turnStateMonitor.restart();
+            else
+                turnStateMonitor.start();
+        }
+    }
+
+    function distributePostSwapCascade(payload) {
+        if (!payload || !payload.battleGrid)
+            return;
+        var sourceGrid = null;
+        if (battleGrid_top.uuid === payload.battleGrid)
+            sourceGrid = battleGrid_top;
+        else if (battleGrid_bottom.uuid === payload.battleGrid)
+            sourceGrid = battleGrid_bottom;
+        if (!sourceGrid)
+            return;
+        const targetGrid = sourceGrid === battleGrid_top ? battleGrid_bottom : battleGrid_top;
+        if (targetGrid && typeof targetGrid.informOpponentPostSwapCascadeStatus === "function")
+            targetGrid.informOpponentPostSwapCascadeStatus(payload);
     }
    /* Engine.GameDragItem {
         id: test_rect
@@ -107,19 +187,10 @@ Engine.GameScene {
 
     } */
     Component.onCompleted: {
-    battleGrid.fillGrid()
-        /*addSceneDragItem("test_rect", test_rect)
-        addSceneDragItem("test_rect2", test_rect2)
-        addSceneDropItem("drop_item", dropItem);
-        for (var i=0; i<36; i++) {
-            var blk = createBlock("green");
-            blk.x = i % 6 * 64
-            blk.animationDurationX = 60
-            blk.animationDurationY = 60
-            blk.entryDestroyed.connect(removeSceneItem)
-            debugScene.blocks.push(blk);
-        } */
-
+        if (battleGrid_top && typeof battleGrid_top.requestState === "function")
+            battleGrid_top.requestState("compact");
+        if (battleGrid_bottom && typeof battleGrid_bottom.requestState === "function")
+            battleGrid_bottom.requestState("wait");
     }
     Engine.GameDropItem {
         id: dropItem
@@ -147,39 +218,25 @@ Engine.GameScene {
         triggeredOnStart: false
         running: false
         onTriggered: {
-            if (battleGrid.currentState == "init") {
-                battleGrid.currentState = "compact"
-                return
-            }
-
-            if (battleGrid.currentState == "launched") {
-                battleGrid.currentState = "compact"
-                return
-            }
-            if (battleGrid.currentState == "compacted") {
-                battleGrid.currentState = "fill"
-                return
-            }
-            if (battleGrid.currentState == "filled") {
-                battleGrid.currentState = "match"
-                return
-            }
-            if (battleGrid.currentState == "matched") {
-                battleGrid.currentState = "launch"
-                return
-            }
-
-
-
-            //battleGrid.fillGrid();
+            var grid = getBattleGridOffense();
+            if (grid && typeof grid.requestState === "function")
+                grid.requestState("compact");
         }
         }
+    Timer {
+        id: turnStateMonitor
+        interval: 120
+        repeat: true
+        running: false
+        onTriggered: synchronizeTurnStateIfReady()
+    }
 onItemDroppedNowhere: function(itemName) {
     console.log("drag item dropped nowhere")
         var dragItem = getSceneItem(itemName);
     function snapItemToGrid(item, row, col) {
-        item.x = battleGrid.cellPosition(row, col).x
-        item.y = battleGrid.cellPosition(row, col).y
+        var grid = getBattleGridOffense();
+        item.x = grid.cellPosition(row, col).x
+        item.y = grid.cellPosition(row, col).y
 
     }
     snapItemToGrid(dragItem, dragItem.entry.row, dragItem.entry.column)
@@ -225,8 +282,8 @@ onItemDroppedNowhere: function(itemName) {
             var bg = getBattleGridOffense();
             bg.blockMatrix[row1][col1] = dropItem
             bg.blockMatrix[row2][col2] = dragItem
-            checkRefillTimer.start()
             bg.requestState("match")
+            bg.postSwapCascading = true
             turnsLeft--
 
 
@@ -235,10 +292,35 @@ onItemDroppedNowhere: function(itemName) {
     }
 
     onTurnsLeftChanged: {
-        if (turnsLeft <= 0) {
-            if (currentTurn == "top") { currentTurn = "bottom"; } else { currentTurn = "top"; }
-            turnsLeft = 3;
-            console.log("turn switched to",currentTurn);
+        var offenseGrid = getBattleGridOffense();
+        postSwapCascadeCheckTimer.running = true;
+
+    }
+
+    Timer {
+        id: postSwapCascadeCheckTimer
+        running: false
+        interval: 200
+        repeat: true
+        onTriggered: {
+            checkActiveGridPostSwapCascadeComplete()
+        }
+    }
+
+    function checkActiveGridPostSwapCascadeComplete() {
+        var bg = getBattleGridOffense();
+        var newbg = getBattleGridDefense();
+        if (bg.currentState === "idle") {
+            if (turnsLeft <= 0) {
+                if (currentTurn == "top") { currentTurn = "bottom"; } else { currentTurn = "top"; }
+                turnsLeft = 3;
+                console.log("turn switched to",currentTurn);
+                postSwapCascadeCheckTimer.running = false;
+                if (newbg && typeof newbg.requestState === "function")
+                    newbg.requestState("compact");
+                if (bg && typeof bg.requestState === "function")
+                    bg.requestState("wait");
+            }
         }
     }
 
@@ -259,15 +341,16 @@ onItemDroppedNowhere: function(itemName) {
                  itm3.y += 400
 
 
-                 itm3.entry.blockState = "launch"
-                 if (debugScene.blocks.length == 0) {
-                     launchTimer.running = false;
-                     console.log("got last block launched, connecting destroyed state change to fill timer");
-                     checkRefillTimer.running = true;
-                     checkRefillTimer.restart();
-                 }
+                itm3.entry.blockState = "launch"
+                if (debugScene.blocks.length == 0) {
+                    launchTimer.running = false;
+                    console.log("got last block launched, connecting destroyed state change to fill timer");
+                    var grid = getBattleGridOffense();
+                    if (grid && typeof grid.requestState === "function")
+                        grid.requestState("compact");
+                }
 
-            }
+           }
 
         }
     }
@@ -285,13 +368,15 @@ onItemDroppedNowhere: function(itemName) {
 
                 launchTimer.running = true
                 var new_blocks = [];
-                console.log(battleGrid.currentState)
-                //if (battleGrid.currentState == "init") {
+                var activeGrid = getBattleGridOffense();
+                console.log(activeGrid ? activeGrid.currentState : "unknown state")
+                if (!activeGrid)
+                    return;
                 for (var i=0; i<17; i++) {
                     var r = Math.floor(Math.random() * 5);
                     var c = Math.floor(Math.random() * 5);
-                    var blk = battleGrid.getBlockEntryAt(r,c)
-                    var wrapper = battleGrid.getBlockWrapper(r, c)
+                    var blk = activeGrid.getBlockEntryAt(r,c)
+                    var wrapper = activeGrid.getBlockWrapper(r, c)
                     wrapper.animationDurationX = 60
                     wrapper.animationDurationY = 360
 
@@ -311,7 +396,7 @@ onItemDroppedNowhere: function(itemName) {
         gameScene: debugScene
 
         launchDirection: "down"
-
+        uuid: "top"
         Component.onCompleted: {
 
         }
@@ -324,7 +409,7 @@ onItemDroppedNowhere: function(itemName) {
         x: 200
         y: 400
         gameScene: debugScene
-
+        uuid: "bottom"
         launchDirection: "up"
 
         Component.onCompleted: {
@@ -340,6 +425,9 @@ onItemDroppedNowhere: function(itemName) {
         function onInformBlockLaunchEndPoint(payload, endX, endY) {
             forwardBlockLaunchEndPoint(payload, endX, endY);
         }
+        function onInformPostSwapCascadeStatus(payload) {
+            distributePostSwapCascade(payload);
+        }
     }
 
     Connections {
@@ -350,111 +438,15 @@ onItemDroppedNowhere: function(itemName) {
         function onInformBlockLaunchEndPoint(payload, endX, endY) {
             forwardBlockLaunchEndPoint(payload, endX, endY);
         }
+        function onInformPostSwapCascadeStatus(payload) {
+            distributePostSwapCascade(payload);
+        }
     }
 
 
 
-    // Item {
-    //     width: 600
-    //     height: 600
-
-    //     Repeater {
-    //         model: 15
-    //         delegate: Rectangle {
-    //             required property var index
-    //             required property var model
-    //             PathInterpolator {
-
-    //                   id: motionPath
-    //                   progress: index / 15
 
 
-
-    //                   NumberAnimation on progress {
-
-    //                       from: index / 15
-    //                       to: 1.0
-    //                       running: true
-    //                       duration: 3000
-    //                       loops: NumberAnimation.Infinite
-    //                   }
-
-    //                   path: Path {
-    //                 startX: 100; startY: 100
-
-    //                 PathArc {
-    //                     x: 300; y: 300
-    //                     radiusX: 200 - (10 * index); radiusY: 200 - (10 * index)
-    //                     useLargeArc: true
-
-    //                 }
-    //             }
-    //             }
-
-    //             Component.onCompleted: {
-    //                // motionPath.progressChanged.connect(delegate.updateProgress)
-    //             }
-    //             function updateProgress(new_prog) {
-    //                 /* motionPath.progress += 0.1
-    //                 if (motionPath.progress >= 1.0)  { motionPath.progress = 0 }
-    //                 delegate.x = motionPath.x
-    //                 delegate.y =motionPath.y */
-
-    //             }
-    //             id: delegate
-
-    //             color: Math.random() < 0.33 ? "red" : (Math.random() < 0.66) ? "blue" : "yellow"
-    //             x: motionPath.x
-    //             y: motionPath.y
-    //             Behavior on x { NumberAnimation { duration: 3000 } }
-    //             Behavior on y { NumberAnimation { duration: 3000 } }
-    //             width: height
-    //             height: 40
-    //             z: 20
-    //             transformOrigin: Item.Center
-
-    //         }
-
-
-    //         }
-
-
-    // }
-
-
-    // Item {
-    //     id: colorRing
-    //     width: 280
-    //     height: 280
-    //     anchors.centerIn: parent
-    //     property var colorChoices: ["red", "blue", "green", "yellow"]
-    //     property real angleOffset: 0
-    //     readonly property int itemCount: 15
-    //     readonly property real radius: Math.min(width, height) / 2 - 24
-
-    //     NumberAnimation on angleOffset {
-    //         from: 0
-    //         to: 2 * Math.PI
-    //         duration: 8000
-    //         loops: Animation.Infinite
-    //         easing.type: Easing.Linear
-    //         running: true
-    //     }
-
-    //     Repeater {
-    //         model: colorRing.itemCount
-    //         delegate: Rectangle {
-    //             readonly property real angle: (2 * Math.PI / colorRing.itemCount) * index + colorRing.angleOffset
-    //             readonly property color rectColor: colorRing.colorChoices[Math.floor(Math.random() * colorRing.colorChoices.length)]
-    //             width: 32
-    //             height: 32
-    //             color: rectColor
-    //             radius: 6
-    //             x: colorRing.width / 2 + colorRing.radius * Math.cos(angle) - width / 2
-    //             y: colorRing.height / 2 + colorRing.radius * Math.sin(angle) - height / 2
-    //         }
-    //     }
-    // }
 
 
 

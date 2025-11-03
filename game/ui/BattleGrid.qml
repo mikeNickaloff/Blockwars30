@@ -21,6 +21,7 @@ Item {
     signal distributeBlockLaunchPayload(var payload)
     signal distributedBlockLaunchPayload(var payload)
     signal informBlockLaunchEndPoint(var payload, var endX, var endY)
+    signal informPostSwapCascadeStatus(var payload)
 
     // Grid configuration.
     property int gridCols: 6
@@ -41,63 +42,29 @@ Item {
 
     property string uuid: Factory.uid("battleGrid")
     property int mainHealth: 100
+    property bool postSwapCascading: false
+    property var launchSequence: []
+    property int launchSequenceIndex: 0
 
     property string currentState: "init"
     property string previousState: ""
     property bool suppressStateHandler: false
-    property string deferredStateRequest: ""
-
     readonly property var stateList: [
         "init", "initializing", "initialized",
         "compact", "compacting", "compacted",
         "fill", "filling", "filled",
         "match", "matching", "matched",
-        "launch", "launching", "launched"
+        "launch", "launching", "launched",
+        "idle", "idling", "idled",
+        "wait", "waiting", "waited"
     ]
 
     // Compact representation of the grid.
     property var blockMatrix: []
 
-    // Queue used to serialize lifecycle work.
-    property bool stateMachineManagedInitialization: false
-
-    property alias battleQueue: battleQueueController.queue
-    property alias queueProcessing: battleQueueController.processing
-    property alias activeQueueItem: battleQueueController.activeItem
-
-    property var stateActions: ({
-        init: {
-            main: function(target) {
-                target.fillGrid();
-                return { initialized: true };
-            }
-        },
-        compact: {
-            main: function(target) {
-                target.compactColumns();
-                target.spawnMissingBlocks();
-                return { compacted: true };
-            }
-        },
-        fill: {
-            main: function(target) {
-                target.fillMissingBlocks();
-                return { filled: true };
-            }
-        },
-        match: {
-            main: function(target) {
-                return target.markMatchedBlocks();
-            }
-        },
-        launch: {
-            main: function(target) {
-                return target.launchMatchedBlocks();
-            }
-        }
-    });
-
     property var __launchRelayRegistered: false
+
+    onPostSwapCascadingChanged: distributePostSwapCascadeStatus()
 
     function normalizeStateName(value) {
         if (value === null || value === undefined)
@@ -119,49 +86,6 @@ Item {
         };
     }
 
-    function hasActiveLaunchOrExplodeBlocks() {
-        ensureMatrix();
-        for (var row = 0; row < gridRows; ++row) {
-            for (var column = 0; column < gridCols; ++column) {
-                const entry = getBlockEntryAt(row, column);
-                if (!entry)
-                    continue;
-                const blockState = normalizeStateName(entry.blockState);
-                if (blockState === "launch" || blockState === "explode" || blockState === "moving")
-                    return true;
-
-
-            }
-        }
-        return false;
-    }
-
-    function deferStateTransition(baseState) {
-        const normalized = normalizeStateName(baseState);
-        if (!normalized)
-            return;
-        deferredStateRequest = normalized;
-        if (!deferredStateRetryTimer.running)
-            deferredStateRetryTimer.start();
-    }
-
-    function attemptDeferredStateTransition() {
-        if (!deferredStateRequest) {
-            if (deferredStateRetryTimer.running)
-                deferredStateRetryTimer.stop();
-            return;
-        }
-
-        if (hasActiveLaunchOrExplodeBlocks())
-            return;
-
-        const targetState = deferredStateRequest;
-        deferredStateRequest = "";
-        if (deferredStateRetryTimer.running)
-            deferredStateRetryTimer.stop();
-        requestState(targetState);
-    }
-
     function setGridStateInternal(stateName, suppressHandler) {
         const normalized = normalizeStateName(stateName);
         if (!normalized || currentState === normalized)
@@ -179,140 +103,62 @@ Item {
     }
 
     function requestState(baseState) {
+        if (currentState == "wait") {
+            if (gameScene.getBattleGridOffense() !== root) {
+                if (baseState == "compact") { return false; }
+
+                if (baseState == "match") { return false; }
+                if (baseState == "launch") { return false; }
+
+            }
+        }
         const forms = stateFormsFor(baseState);
         if (!forms)
             return false;
-        if (hasActiveLaunchOrExplodeBlocks()) {
-            deferStateTransition(forms.base);
-            return true;
-        }
-        if (deferredStateRequest === forms.base)
-            deferredStateRequest = "";
-        if (deferredStateRetryTimer.running && !deferredStateRequest)
-            deferredStateRetryTimer.stop();
-        const changed = setGridStateInternal(forms.base, false);
-        if (!changed && currentState === forms.base)
-            enqueueLifecycleForState(forms.base);
+        setGridStateInternal(forms.base, false);
         return true;
     }
 
     onCurrentStateChanged: handleStateChange(currentState, previousState)
 
     function handleStateChange(newState, oldState) {
-        console.log("state changed from",root, "from", oldState,"to", newState)
+        console.log("state changed from", root, "from", oldState, "to", newState);
         if (suppressStateHandler)
             return;
+
         previousState = oldState || "";
-        const forms = stateFormsFor(newState);
-        if (!forms)
-            return;
+        stopAllStateTimers();
 
-        if (forms.base === normalizeStateName(newState)) {
-            enqueueLifecycleForState(forms.base);
-        }
-    }
+        const normalized = normalizeStateName(newState);
 
-    function enqueueLifecycleForState(baseState) {
-        if (isLifecycleQueued(baseState))
-            return;
-
-        const forms = stateFormsFor(baseState);
-        if (!forms)
-            return;
-
-        const stateAction = stateActions[forms.base] || {};
-        const queueItem = {
-            name: "lifecycle-" + forms.base,
-            forms: forms,
-            action: stateAction,
-            start_function: function(target) {
-                if (forms.base === "compact" && typeof target.purgeDestroyedBlocks === "function")
-                    target.purgeDestroyedBlocks();
-                target.setGridStateInternal(forms.active);
-                if (typeof stateAction.start === "function")
-                    stateAction.start(target, forms);
-            },
-            main_function: function(target) {
-                if (typeof stateAction.main === "function")
-                    return stateAction.main(target, forms);
-                return {};
-            },
-            end_function: function(target, item, context) {
-                target.setGridStateInternal(forms.completed);
-                if (typeof stateAction.end === "function")
-                    stateAction.end(target, context, forms);
-                target.handleLifecycleCompleted(forms, context);
-            }
-        };
-
-        enqueueBattleEvent(queueItem);
-    }
-
-    function isLifecycleQueued(baseState) {
-        const target = normalizeStateName(baseState);
-        if (!target)
-            return false;
-
-        if (activeQueueItem && activeQueueItem.forms && activeQueueItem.forms.base === target)
-            return true;
-
-        for (var idx = 0; idx < battleQueue.length; ++idx) {
-            const item = battleQueue[idx];
-            if (item && item.forms && item.forms.base === target)
-                return true;
-        }
-        return false;
-    }
-
-    function enqueueBattleEvent(eventObject) {
-        console.log("Enqueued battle event",JSON.stringify(eventObject))
-        if (!eventObject)
-            return;
-        battleQueueController.enqueue(eventObject);
-    }
-
-    function deferActiveQueueItem() {
-        return battleQueueController.deferActiveItem();
-    }
-
-    function finishActiveQueueItem(context) {
-        battleQueueController.finishActiveItem(context);
-    }
-
-    function handleLifecycleCompleted(forms, context) {
-        const baseState = forms.base;
-        const summary = context && context.result ? context.result : context;
-
-        switch (baseState) {
-        case "init":
-            requestState("compact");
+        switch (normalized) {
+        case "wait":
             break;
         case "compact":
-            requestState("fill");
+            compactColumns();
+            compactStateCheckTimer.start();
             break;
         case "fill":
-            requestState("match");
+            fillMissingBlocks();
+            fillStateCheckTimer.start();
             break;
-        case "match": {
-            const matches = summary && summary.matches ? summary.matches : [];
-           // updateBlockScenePositions();
-            if (matches.length)
-                requestState("launch");
-            if (!matches.length)
-                requestState("idle")
+        case "match":
+            markMatchedBlocks();
+            matchStateCheckTimer.start();
+            Qt.callLater(function() { evaluateMatchState(); });
             break;
-        }
         case "launch":
+            prepareLaunchSequence();
+            launchBlocksTimer.start();
+            break;
+        case "idle":
+            postSwapCascading = false;
+            updateBlockScenePositions();
+            break;
+        case "init":
+            fillGrid();
             requestState("compact");
             break;
-        case "idle": {
-            updateBlockScenePositions()
-            break;
-        }
-        case "matched": {
-            requestState("launch");
-            break;
-        }
         default:
             break;
         }
@@ -437,6 +283,26 @@ Item {
         return getBlockEntryAt(row, column);
     }
 
+    function distributePostSwapCascadeStatus() {
+        if (!uuid)
+            return;
+        const payload = {
+            battleGrid: uuid,
+            postSwapCascade: postSwapCascading
+        };
+        informPostSwapCascadeStatus(payload);
+    }
+
+    function informOpponentPostSwapCascadeStatus(payload) {
+        if (!payload)
+            return;
+        const state = normalizeStateName(currentState);
+        if (state !== "wait")
+            return;
+        if (payload.postSwapCascade === false)
+            requestState("compact");
+    }
+
     function moveWrapper(wrapper, targetRow, targetColumn) {
         if (!wrapper)
             return;
@@ -466,6 +332,11 @@ Item {
         const rowEnd = fillDescending ? -1 : gridRows;
         const rowStep = fillDescending ? -1 : 1;
 
+        const direction = normalizeStateName(launchDirection);
+        const spawnOffset = direction === "down" ? -(cellH * 5)
+                           : direction === "up" ? (cellH * 5)
+                           : -(cellH * 6);
+
         for (var row = rowStart; row !== rowEnd; row += rowStep) {
             for (var column = 0; column < gridCols; ++column) {
                 if (getBlockWrapper(row, column))
@@ -482,14 +353,13 @@ Item {
                                 height: cellH,
                                 x: pos.x,
                                 y: pos.y,
+                                spawnOffset: spawnOffset,
                                 blockProps: {
                                     row: row,
                                     column: column,
                                     maxRows: gridRows,
                                     blockColor: blockPalette[(row + column) % blockPalette.length]
-                                },
-                                rowHeight: cellH,
-                                spawnOffsetRows: 5
+                                }
                             });
 
                 if (!dragItem)
@@ -510,6 +380,7 @@ Item {
 
     function compactColumns() {
         ensureMatrix();
+        purgeDestroyedBlocks();
         const gravityDown = normalizeStateName(launchDirection) === "up";
         for (var column = 0; column < gridCols; ++column) {
             var survivors = [];
@@ -657,12 +528,223 @@ Item {
         if (!payload)
             return null;
         const enriched = Object.assign({}, payload, {
-            battleGrid: uuid,
+            battleGrid: root.uuid,
             uuid: uuid,
             launchDirection: launchDirection
         });
         distributedBlockLaunchPayload(enriched);
         return enriched;
+    }
+
+    function hasMissingOrDestroyedBlocks() {
+        ensureMatrix();
+        for (var row = 0; row < gridRows; ++row) {
+            for (var column = 0; column < gridCols; ++column) {
+                const entry = getBlockEntryAt(row, column);
+                if (!entry)
+                    return true;
+                const state = normalizeStateName(entry.blockState);
+                if (state === "destroyed")
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    function hasActiveNonIdleBlocks() {
+        ensureMatrix();
+        for (var row = 0; row < gridRows; ++row) {
+            for (var column = 0; column < gridCols; ++column) {
+                const entry = getBlockEntryAt(row, column);
+                if (!entry)
+                    continue;
+                const state = normalizeStateName(entry.blockState);
+                if (state === "launch" || state === "match" || state === "explode")
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    function handlePostSwapCascadeResolution() {
+        if (!postSwapCascading)
+            return false;
+        if (hasMissingOrDestroyedBlocks())
+            return false;
+        if (hasActiveNonIdleBlocks())
+            return false;
+        postSwapCascading = false;
+        requestState("idle");
+        return true;
+    }
+
+    function allEntriesIdleAllowMissing() {
+        ensureMatrix();
+        for (var row = 0; row < gridRows; ++row) {
+            for (var column = 0; column < gridCols; ++column) {
+                const entry = getBlockEntryAt(row, column);
+                if (!entry)
+                    continue;
+                if (normalizeStateName(entry.blockState) !== "idle")
+                    return false;
+            }
+        }
+        return true;
+    }
+
+    function allEntriesIdleNoMissing() {
+        ensureMatrix();
+        for (var row = 0; row < gridRows; ++row) {
+            for (var column = 0; column < gridCols; ++column) {
+                const entry = getBlockEntryAt(row, column);
+                if (!entry)
+                    return false;
+                if (normalizeStateName(entry.blockState) !== "idle")
+                    return false;
+            }
+        }
+        return true;
+    }
+
+    function allEntriesIdleDestroyedOrMissing() {
+        ensureMatrix();
+        for (var row = 0; row < gridRows; ++row) {
+            for (var column = 0; column < gridCols; ++column) {
+                const entry = getBlockEntryAt(row, column);
+                if (!entry)
+                    continue;
+                const state = normalizeStateName(entry.blockState);
+                if (state !== "idle" && state !== "destroyed")
+                    return false;
+            }
+        }
+        return true;
+    }
+
+    function hasMatchedBlocks() {
+        ensureMatrix();
+        for (var row = 0; row < gridRows; ++row) {
+            for (var column = 0; column < gridCols; ++column) {
+                const entry = getBlockEntryAt(row, column);
+                if (!entry)
+                    continue;
+                if (normalizeStateName(entry.blockState) === "matched")
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    function buildLaunchSequence() {
+        var sequence = [];
+        for (var row = gridRows - 1; row >= 0; --row) {
+            if (row % 2 === 1) {
+                for (var columnDesc = gridCols - 1; columnDesc >= 0; --columnDesc)
+                    sequence.push({ row: row, column: columnDesc });
+            } else {
+                for (var columnAsc = 0; columnAsc < gridCols; ++columnAsc)
+                    sequence.push({ row: row, column: columnAsc });
+            }
+        }
+        return sequence;
+    }
+
+    function prepareLaunchSequence() {
+        launchSequence = buildLaunchSequence();
+        launchSequenceIndex = 0;
+    }
+
+    function triggerLaunchForEntry(entry, row, column) {
+        if (!entry)
+            return false;
+        if (normalizeStateName(entry.blockState) !== "matched")
+            return false;
+
+        const wrapper = getBlockWrapper(row, column);
+        entry.blockState = "launch";
+        if (entry.health === undefined || entry.health === null)
+            entry.health = 5;
+
+        var globalPoint = { x: 0, y: 0 };
+        if (wrapper && typeof wrapper.mapToGlobal === "function")
+            globalPoint = wrapper.mapToGlobal(0, 0);
+        else {
+            const cellPos = cellPosition(row, column);
+            globalPoint = root.mapToGlobal(cellPos.x, cellPos.y);
+        }
+
+        const payload = {
+            blockName: entry.itemName,
+            row: entry.row,
+            column: entry.column,
+            health: entry.health,
+            x: globalPoint.x,
+            y: globalPoint.y,
+            action: "launch",
+            battleGrid: root.uuid
+        };
+        distributeBlockLaunchPayload(payload);
+        if (wrapper)
+            wrapperLaunched(wrapper);
+        return true;
+    }
+
+    function launchNextMatchedBlock() {
+        ensureMatrix();
+        while (launchSequenceIndex < launchSequence.length) {
+            const coord = launchSequence[launchSequenceIndex++];
+            const entry = getBlockEntryAt(coord.row, coord.column);
+            if (!entry)
+                continue;
+            if (!triggerLaunchForEntry(entry, coord.row, coord.column))
+                continue;
+            return true;
+        }
+        return false;
+    }
+
+    function stopAllStateTimers() {
+        if (compactStateCheckTimer.running)
+            compactStateCheckTimer.stop();
+        if (fillStateCheckTimer.running)
+            fillStateCheckTimer.stop();
+        if (matchStateCheckTimer.running)
+            matchStateCheckTimer.stop();
+        if (launchBlocksTimer.running)
+            launchBlocksTimer.stop();
+        if (launchStateCheckTimer.running)
+            launchStateCheckTimer.stop();
+    }
+
+    function checkCompactStateCompletion() {
+        if (!allEntriesIdleAllowMissing())
+            return;
+        compactStateCheckTimer.stop();
+        requestState("fill");
+    }
+
+    function checkFillStateCompletion() {
+        if (!allEntriesIdleNoMissing())
+            return;
+        fillStateCheckTimer.stop();
+        requestState("match");
+    }
+
+    function evaluateMatchState() {
+        matchStateCheckTimer.stop();
+        if (hasMatchedBlocks())
+            requestState("launch");
+        else {
+            postSwapCascading = false;
+            requestState("idle");
+        }
+    }
+
+    function checkLaunchStateCompletion() {
+        if (!allEntriesIdleDestroyedOrMissing())
+            return;
+        launchStateCheckTimer.stop();
+        requestState("compact");
     }
 
     function calculateLaunchDamage(payload) {
@@ -703,7 +785,7 @@ Item {
             if (remaining >= targetHealth) {
                 remaining -= targetHealth;
                 entry.health = 0;
-                entry.blockState = "explode";
+                entry.blockState = "waitAndExplode";
                 damagedBlocks.push({ row: row, column: column, destroyed: true });
                 lastImpact = { row: row, column: column };
             } else {
@@ -755,29 +837,11 @@ Item {
         const launched = [];
         for (var row = 0; row < gridRows; ++row) {
             for (var column = 0; column < gridCols; ++column) {
-                const wrapper = blockMatrix[row][column];
-                if (!wrapper || !wrapper.entry)
+                const entry = getBlockEntryAt(row, column);
+                if (!entry)
                     continue;
-                const entry = wrapper.entry;
-                if (entry.blockState === "matched") {
-                    entry.blockState = "launch";
-                    if (entry.health === undefined || entry.health === null)
-                        entry.health = 100;
-                    const globalPoint = wrapper.mapToGlobal(0, 0);
-                    const payload = {
-                        blockName: entry.itemName,
-                        row: entry.row,
-                        column: entry.column,
-                        health: entry.health,
-                        x: globalPoint.x,
-                        y: globalPoint.y,
-                        action: "launch"
-                    };
-                    distributeBlockLaunchPayload(payload);
-                    if (entry.itemName)
-                        launched.push(entry.itemName);
-                    wrapperLaunched(wrapper);
-                }
+                if (triggerLaunchForEntry(entry, row, column) && entry.itemName)
+                    launched.push(entry.itemName);
             }
         }
         return { launched: launched };
@@ -798,25 +862,55 @@ Item {
     Component { id: dragComp; Engine.GameDragItem { } }
     Component { id: blockComp; UI.Block { } }
 
-    UI.BattleQueueOrchestrator {
-        id: battleQueueController
-        owner: root
-        tickInterval: 5
-        onQueueItemStarted: function(item) {
-            root.queueItemStarted(item);
-        }
-        onQueueItemCompleted: function(item, context) {
-            root.queueItemCompleted(item, context);
+    Timer {
+        id: compactStateCheckTimer
+        interval: 120
+        repeat: true
+        running: false
+        triggeredOnStart: false
+        onTriggered: checkCompactStateCompletion()
+    }
+
+    Timer {
+        id: fillStateCheckTimer
+        interval: 120
+        repeat: true
+        running: false
+        triggeredOnStart: false
+        onTriggered: checkFillStateCompletion()
+    }
+
+    Timer {
+        id: matchStateCheckTimer
+        interval: 150
+        repeat: false
+        running: false
+        triggeredOnStart: false
+        onTriggered: evaluateMatchState()
+    }
+
+    Timer {
+        id: launchBlocksTimer
+        interval: 90
+        repeat: true
+        running: false
+        triggeredOnStart: false
+        onTriggered: {
+            if (!launchNextMatchedBlock()) {
+                launchBlocksTimer.stop();
+                launchStateCheckTimer.start();
+            }
+
         }
     }
 
     Timer {
-        id: deferredStateRetryTimer
-        interval: 325
+        id: launchStateCheckTimer
+        interval: 120
         repeat: true
         running: false
         triggeredOnStart: false
-        onTriggered: attemptDeferredStateTransition()
+        onTriggered: checkLaunchStateCompletion()
     }
 
     Component.onCompleted: {

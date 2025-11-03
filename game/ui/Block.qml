@@ -52,9 +52,22 @@ Item {
             postLaunchStateTimer.running = true;
 
         }
-
+        if (blockState == "waitAndExplode") {
+            waitAndExplodeTimer.running = true
+            waitAndExplodeTimer.restart()
+        }
         if (blockState == "idle") {
             blockLoader.sourceComponent = idleComponent;
+        }
+    }
+    Timer {
+        id: waitAndExplodeTimer
+        running: false
+        interval: 200
+        triggeredOnStart: false
+        repeat: false
+        onTriggered:  {
+            blockState = "explode"
         }
     }
 
@@ -129,7 +142,7 @@ Item {
     }
         Timer {
             id: postLaunchStateTimer
-            interval: 2840
+            interval: 1040
             running: false
             repeat: false
             triggeredOnStart: false
