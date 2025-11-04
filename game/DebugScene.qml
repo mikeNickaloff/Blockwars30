@@ -371,12 +371,11 @@ Engine.GameScene {
     }
 
     function finalizeHeroPlacement(grid, cardData, heroItem, placedHero, placement) {
-        cardData.heroPlaced = true;
-        cardData.dragLocked = true;
+        if (!grid || !cardData || !placement)
+            return;
+        if (typeof cardData.resetEnergy === "function")
+            cardData.resetEnergy();
         cardData.activationReady = false;
-        cardData.currentEnergy = 0;
-        if (typeof cardData.ensureEnergyWithinBounds === "function")
-            cardData.ensureEnergyWithinBounds();
         if (heroItem)
             heroItem.visible = false;
         if (placedHero) {
@@ -384,8 +383,16 @@ Engine.GameScene {
             placedHero.cardData = cardData;
         }
         if (grid && typeof grid.registerHeroPlacement === "function") {
-            grid.registerHeroPlacement(cardData.powerupUuid, placedHero, placement.row, placement.column, cardData.powerupHeroRowSpan, cardData.powerupHeroColSpan, { cardUuid: cardData.powerupUuid });
+            grid.registerHeroPlacement(
+                        cardData.powerupUuid,
+                        placedHero,
+                        placement.row,
+                        placement.column,
+                        cardData.powerupHeroRowSpan,
+                        cardData.powerupHeroColSpan,
+                        { cardUuid: cardData.powerupUuid, cardData: cardData });
         }
+        triggerPowerupActivation(cardData, { trigger: "placement", skipEnergyDrain: true });
     }
 
     function processLaunchDamageRewards(sourceGrid, damageResult) {
@@ -403,6 +410,75 @@ Engine.GameScene {
                 continue;
             sidebar.distributeEnergy(blockInfo.color, blockInfo.energyReward);
         }
+        if (damageResult.breachOccurred && damageResult.breachHealth > 0 && damageResult.sourceBlockColor) {
+            var breachReward = Math.floor(damageResult.breachHealth * 2);
+            if (breachReward > 0)
+                sidebar.distributeEnergy(damageResult.sourceBlockColor, breachReward);
+        }
+    }
+
+    function opposingGrid(grid) {
+        if (!grid)
+            return null;
+        return grid === battleGrid_top ? battleGrid_bottom : grid === battleGrid_bottom ? battleGrid_top : null;
+    }
+
+    function adjustGridHealth(targetGrid, amount, operation) {
+        if (!targetGrid)
+            return;
+        var delta = Math.max(0, Math.floor(amount || 0));
+        if (delta <= 0)
+            return;
+        var op = (operation || "decrease").toString().toLowerCase();
+        if (op === "increase")
+            targetGrid.mainHealth += delta;
+        else
+            targetGrid.mainHealth = Math.max(0, targetGrid.mainHealth - delta);
+    }
+
+    function triggerPowerupActivation(cardData, options) {
+        if (!cardData)
+            return false;
+        var sourceGrid = cardData.battleGrid || null;
+        if (!sourceGrid)
+            return false;
+        if (!cardData.heroPlaced || !cardData.heroAlive)
+            return false;
+
+        var triggerInfo = options || {};
+        var targetType = (cardData.powerupTarget || "Self").toString().toLowerCase();
+        var targetGrid = targetType === "enemy" ? opposingGrid(sourceGrid) : sourceGrid;
+        if (!targetGrid)
+            return false;
+
+        var amount = Math.max(0, Math.floor(cardData.powerupActualAmount || 0));
+        var operation = (cardData.powerupOperation || "increase").toString().toLowerCase();
+        var spec = cardData.powerupTargetSpec || "PlayerHealth";
+
+        switch (spec) {
+        case "Blocks": {
+            if (targetGrid.applyBlockDeltaList) {
+                var cells = Array.isArray(cardData.powerupTargetSpecData) ? cardData.powerupTargetSpecData : [];
+                targetGrid.applyBlockDeltaList(cells, amount, operation, { trigger: triggerInfo.trigger || "manual", sourceCard: cardData });
+            }
+            break;
+        }
+        case "PlayerPowerupInGameCards": {
+            if (targetGrid.applyHeroDeltaByColor) {
+                var colorFilter = cardData.powerupTargetSpecData || "";
+                targetGrid.applyHeroDeltaByColor(colorFilter, amount, operation, { trigger: triggerInfo.trigger || "manual", sourceCard: cardData });
+            }
+            break;
+        }
+        case "PlayerHealth":
+        default:
+            adjustGridHealth(targetGrid, amount, operation);
+            break;
+        }
+
+        if (!triggerInfo.skipEnergyDrain && typeof cardData.consumeEnergy === "function")
+            cardData.consumeEnergy();
+        return true;
     }
    /* Engine.GameDragItem {
         id: test_rect
@@ -538,17 +614,17 @@ onItemDroppedNowhere: function(itemName) {
             if (rowDelta > 1) { snapItemToGrid(dragItem, row1, col1); return }
             if (colDelta > 1) { snapItemToGrid(dragItem, row1, col1); return }
 
-            dragItem.entry.row = row2
-            dragItem.entry.column = col2
-            dropItem.entry.row = row1
-            dropItem.entry.column = col1
-            snapItemToGrid(dragItem, row2, col2)
-            snapItemToGrid(dropItem, row1, col1)
+            var bg = getBattleGridOffense();
+            var swapSuccess = bg.requestSwapWrappers(row1, col1, row2, col2);
+            if (!swapSuccess) {
+                snapItemToGrid(dragItem, row1, col1)
+                snapItemToGrid(dropItem, row2, col2)
+                return
+            }
 
             console.log("got valid swap  -- ",dragItemName, dropItemName, startx, starty, endx, endy)
-            var bg = getBattleGridOffense();
-            bg.blockMatrix[row1][col1] = dropItem
-            bg.blockMatrix[row2][col2] = dragItem
+            snapItemToGrid(dragItem, dragItem.entry.row, dragItem.entry.column)
+            snapItemToGrid(dropItem, dropItem.entry.row, dropItem.entry.column)
             bg.requestState("match")
             bg.postSwapCascading = true
             turnsLeft--
@@ -672,18 +748,25 @@ onItemDroppedNowhere: function(itemName) {
     UI.BattleCardSidebar {
         id: opponentSidebar
         gameScene: debugScene
+        battleGrid: battleGrid_top
         loadout: opponentLoadout
         heroCellWidth: battleGrid_top.cellW
         heroCellHeight: battleGrid_top.cellH
         heroCellSpacing: Math.max(battleGrid_top.gapX, battleGrid_top.gapY)
         anchors.top: battleGrid_top.top
         anchors.bottom: battleGrid_top.bottom
-        anchors.left: battleGrid_top.right
         anchors.leftMargin: 32
         onHeroPlacementRequested: function(cardData, heroItem, sceneX, sceneY) {
             handleHeroPlacementRequest(battleGrid_top, cardData, heroItem, sceneX, sceneY)
         }
         Component.onCompleted: registerSidebarForGrid(battleGrid_top, opponentSidebar)
+    }
+
+    Connections {
+        target: opponentSidebar
+        function onPowerupActivationRequested(cardData) {
+            triggerPowerupActivation(cardData, { trigger: "manual" });
+        }
     }
 
     UI.BattleGrid {
@@ -704,18 +787,25 @@ onItemDroppedNowhere: function(itemName) {
     UI.BattleCardSidebar {
         id: playerSidebar
         gameScene: debugScene
+        battleGrid: battleGrid_bottom
         loadout: playerLoadout
         heroCellWidth: battleGrid_bottom.cellW
         heroCellHeight: battleGrid_bottom.cellH
         heroCellSpacing: Math.max(battleGrid_bottom.gapX, battleGrid_bottom.gapY)
         anchors.top: battleGrid_bottom.top
         anchors.bottom: battleGrid_bottom.bottom
-        anchors.left: battleGrid_bottom.right
         anchors.leftMargin: 32
         onHeroPlacementRequested: function(cardData, heroItem, sceneX, sceneY) {
             handleHeroPlacementRequest(battleGrid_bottom, cardData, heroItem, sceneX, sceneY)
         }
         Component.onCompleted: registerSidebarForGrid(battleGrid_bottom, playerSidebar)
+    }
+
+    Connections {
+        target: playerSidebar
+        function onPowerupActivationRequested(cardData) {
+            triggerPowerupActivation(cardData, { trigger: "manual" });
+        }
     }
 
     Connections {

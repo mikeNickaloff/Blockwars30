@@ -1,4 +1,5 @@
 import QtQuick 2.15
+import QtQuick.Layouts
 
 import "../../engine" as Engine
 import "../data" as Data
@@ -9,10 +10,21 @@ Item {
     id: sidebar
 
     property var gameScene
+    property Item battleGrid: null
     property var loadout: []
     property int maxCards: 4
-    property real cardWidth: 64 * 1.15
-    property real cardHeight: 64 * 1.6
+    property real baseCardWidth: 64 * 1.15
+    property real baseCardHeight: 64 * 1.6
+    property real slotWidth: {
+        var available = width - contentPadding * 2
+        if (available > baseCardWidth)
+            return available
+        return baseCardWidth
+    }
+    property real slotHeight: {
+        var limit = battleGrid ? battleGrid.height / 4.5 : baseCardHeight
+        return Math.min(baseCardHeight, limit)
+    }
     property real cardSpacing: 8
     property real contentPadding: 3
     property real heroCellWidth: 40
@@ -27,13 +39,26 @@ Item {
     signal heroPreviewEnded(var cardData, var heroItem)
     signal heroPlacementRequested(var cardData, var heroItem, real sceneX, real sceneY)
     signal cardEnergyChanged(var cardData)
+    signal powerupActivationRequested(var cardData)
 
-    implicitWidth: cardWidth + contentPadding * 2
-    implicitHeight: maxCards * cardHeight + Math.max(0, maxCards - 1) * cardSpacing + contentPadding * 2
+    implicitWidth: baseCardWidth + contentPadding * 2
+    implicitHeight: maxCards * slotHeight + Math.max(0, maxCards - 1) * cardSpacing + contentPadding * 2
+
+    anchors.left: battleGrid ? battleGrid.right : undefined
 
     onLoadoutChanged: rebuildCards()
     onWidthChanged: repositionCards()
     onHeightChanged: repositionCards()
+    onSlotHeightChanged: repositionCards()
+    onBattleGridChanged: repositionCards()
+
+    Connections {
+        target: battleGrid
+        enabled: !!battleGrid
+        function onHeightChanged() {
+            sidebar.repositionCards()
+        }
+    }
 
     Rectangle {
         anchors.fill: parent
@@ -58,7 +83,9 @@ Item {
 
     Component {
         id: cardComponent
-        UI.PowerupCard { }
+        UI.PowerupCard {
+        Layout.fillWidth: true
+        }
     }
 
     Component {
@@ -73,7 +100,9 @@ Item {
 
     Component {
         id: cardDataComponent
-        Data.PowerupCardModel { }
+        Data.PowerupCardModel {
+
+        }
     }
 
     Component.onCompleted: rebuildCards()
@@ -83,16 +112,26 @@ Item {
             var slot = sidebarCards[i]
             slot.homeX = homeXForSlot()
             slot.homeY = homeYForSlot(slot.slotIndex)
+            if (slot.dragItem) {
+                slot.dragItem.width = slotWidth
+                slot.dragItem.height = slotHeight
+                slot.dragItem.Layout.fillWidth = true
+            }
+            if (slot.dragItem && slot.dragItem.entry) {
+                slot.dragItem.entry.width = slotWidth
+                slot.dragItem.entry.height = slotHeight
+                slot.dragItem.entry.Layout.fillWidth = true
+            }
             snapCardHome(slot)
         }
     }
 
     function homeXForSlot() {
-        return width - contentPadding - cardWidth
+        return contentPadding
     }
 
     function homeYForSlot(slotIndex) {
-        return contentPadding + slotIndex * (cardHeight + cardSpacing)
+        return contentPadding + slotIndex * (slotHeight + cardSpacing)
     }
 
     function destroyCards() {
@@ -132,14 +171,16 @@ Item {
                     cardLayer,
                     gameScene || sidebar,
                     {
-                        width: cardWidth,
-                        height: cardHeight,
+                        width: slotWidth,
+                        height: slotHeight,
                         x: homeXForSlot(),
                         y: homeYForSlot(slotIndex),
                         z: slotIndex + 1,
                         namePrefix: "battleCardSidebar",
                         cardProps: {
-                            interactive: false
+                            interactive: false,
+
+                            runtimeData: cardData
                         },
                         heroProps: {
                             parent: heroLayer,
@@ -164,6 +205,13 @@ Item {
         dragItem.homeX = dragItem.x
         dragItem.homeY = dragItem.y
         dragItem.enabled = cardData.activationReady && !cardData.dragLocked
+        dragItem.Layout.fillWidth = true
+        if (dragItem.entry) {
+            dragItem.entry.runtimeData = cardData
+            dragItem.entry.Layout.fillWidth = true
+            dragItem.entry.width = slotWidth
+            dragItem.entry.height = slotHeight
+        }
 
         var hero = creation.heroEntry || null
         if (hero) {
@@ -186,6 +234,11 @@ Item {
         sidebarCards.push(slot)
         cardData.activationReadyChanged.connect(function() { updateDragEnabled(slot) })
         cardData.energyChanged.connect(function() { cardEnergyChanged(cardData) })
+        cardData.heroPlacedChanged.connect(function() { updateDragEnabled(slot) })
+        cardData.heroCurrentHealthChanged.connect(function() {
+            if (!cardData.heroAlive)
+                updateDragEnabled(slot)
+        })
 
         dragItem.itemDragging.connect(function() { handleCardDragStart(slot) })
         dragItem.itemDraggedTo.connect(function() { handleCardDragMove(slot) })
@@ -215,6 +268,13 @@ Item {
     function handleCardDragStart(slot) {
         if (!slot || !slot.cardData)
             return
+        if (slot.cardData.heroPlaced) {
+            if (slot.cardData.heroAlive && slot.cardData.activationReady)
+                requestHeroActivation(slot)
+            slot.dragging = false
+            snapCardHome(slot)
+            return
+        }
         if (!slot.cardData.activationReady || slot.cardData.dragLocked) {
             slot.dragging = false
             snapCardHome(slot)
@@ -286,7 +346,7 @@ Item {
             var slot = sidebarCards[i]
             if (!slot.cardData)
                 continue
-            if (slot.cardData.heroPlaced)
+            if (slot.cardData.heroPlaced && !slot.cardData.heroAlive)
                 continue
             var cardColor = (slot.cardData.powerupCardColor || "").toLowerCase()
             if (cardColor !== key)
@@ -296,3 +356,14 @@ Item {
         }
     }
 }
+    function requestHeroActivation(slot) {
+        if (!slot || !slot.cardData)
+            return
+        if (!slot.cardData.heroPlaced)
+            return
+        if (!slot.cardData.heroAlive)
+            return
+        if (!slot.cardData.activationReady)
+            return
+        powerupActivationRequested(slot.cardData)
+    }

@@ -29,6 +29,7 @@ Item {
 
     signal blockDestroyed(var itemName)
     signal modifiedBlockGridCell()
+    signal blockKilled()
 
     onRowChanged: {
 
@@ -52,6 +53,10 @@ Item {
             postLaunchStateTimer.running = true;
 
         }
+        if (blockState == "explodeKilled") {
+            blockRoot.blockKilled()
+        }
+
         if (blockState == "waitAndExplode") {
             waitAndExplodeTimer.running = true
             waitAndExplodeTimer.restart()
@@ -67,6 +72,19 @@ Item {
         triggeredOnStart: false
         repeat: false
         onTriggered:  {
+
+            blockState = "explode"
+
+        }
+    }
+    Timer {
+        id: waitAndDestroyTimer
+        running: false
+        interval: 300
+        triggeredOnStart: false
+        repeat: false
+        onTriggered: {
+            blockRoot.opacity = 0
             blockState = "explode"
         }
     }
@@ -90,30 +108,39 @@ Item {
 
     Component {
         id: blockIdleComponent
-        Rectangle {
-            color: "black"
-            border.color: "black"
 
-            property var blockColor: blockRoot.blockColor
-            Image {
-                source: "qrc:///images/block_" + blockRoot.blockColor + ".png"
-                height: {
-                    return parent.height * 0.90
+
+            Rectangle {
+                color: "black"
+                border.color: "black"
+                id: blockRect
+                property var blockColor: blockRoot.blockColor
+                Image {
+                    source: "qrc:///images/block_" + blockRoot.blockColor + ".png"
+                    height: {
+                        return parent.height * 0.90
+                    }
+                    width: {
+                        return parent.width * 0.90
+                    }
+
+                    id: blockImage
+                    asynchronous: true
+
+                    sourceSize.height: blockImage.height
+                    sourceSize.width: blockImage.width
+                    anchors.centerIn: parent
+                    visible: true
                 }
-                width: {
-                    return parent.width * 0.90
-                }
 
-                id: blockImage
-                asynchronous: true
 
-                sourceSize.height: blockImage.height
-                sourceSize.width: blockImage.width
-                anchors.centerIn: parent
-                visible: true
-            }
+
+
+
         }
+
     }
+
     Component {
         id: blockExplodeComponent
         UI.BlockExplodeParticles {
@@ -123,7 +150,11 @@ Item {
             }
         }
 
+
+
+
     }
+
 
 
 

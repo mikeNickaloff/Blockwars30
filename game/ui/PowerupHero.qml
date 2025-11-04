@@ -47,6 +47,31 @@ Item {
     }
 
     Rectangle {
+        id: heroHealthBackdrop
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: Math.max(3, hero.spanHeight * 0.08)
+        radius: height / 2
+        opacity: previewMode ? 0 : 0.75
+        color: Qt.rgba(0.05, 0.08, 0.12, 0.85)
+        visible: cardData && !previewMode
+        z: 5
+
+        Rectangle {
+            anchors {
+                left: parent.left
+                top: parent.top
+                bottom: parent.bottom
+            }
+            width: parent.width * (cardData ? cardData.heroHealthProgress : 0)
+            radius: parent.radius
+            color: hero.heroColor()
+            opacity: cardData && cardData.heroAlive ? 0.95 : 0.35
+        }
+    }
+
+    Rectangle {
         id: heroBody
         anchors.fill: parent
         radius: Math.min(width, height) * 0.15
@@ -54,6 +79,7 @@ Item {
         border.color: hero.heroColor()
         border.width: Math.max(2, Math.min(width, height) * 0.05)
         antialiasing: true
+        z: 1
 
         Text {
             id: heroLabel

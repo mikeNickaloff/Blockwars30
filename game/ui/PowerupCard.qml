@@ -40,8 +40,13 @@ Item {
     property alias powerupHeroRowSpan: powerup.powerupHeroRowSpan
     property alias powerupHeroColSpan: powerup.powerupHeroColSpan
     property bool interactive: true
+    property var runtimeData: null
+    readonly property real runtimeEnergyProgress: runtimeData && runtimeData.energyProgress !== undefined
+            ? Math.max(0, Math.min(1, runtimeData.energyProgress))
+            : 0
 
     signal activated(string powerupUuid)
+    Layout.fillWidth: true
 
     function applyRecord(record) {
         if (!record)
@@ -144,6 +149,17 @@ Item {
         acceptedButtons: card.interactive ? Qt.LeftButton : Qt.NoButton
         onClicked: activated(powerup.powerupUuid)
         cursorShape: Qt.PointingHandCursor
+    }
+
+    Rectangle {
+        id: energyFill
+        anchors.left: cardFace.left
+        anchors.bottom: cardFace.bottom
+        height: Math.max(2, cardHeight * 0.035)
+        width: cardFace.width * runtimeEnergyProgress
+        radius: height / 2
+        color: cardColorHex()
+        opacity: 0.95
     }
 
     Component {

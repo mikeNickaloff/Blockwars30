@@ -52,6 +52,7 @@ INSERT INTO files VALUES(44,'main.cpp','Qt application entry point that register
 INSERT INTO files VALUES(45,'pool.cpp','Implementation backing Pool that reads resource data and cycles through numeric and color outputs.');
 INSERT INTO files VALUES(46,'pool.h','QObject-derived pool that serves deterministic random numbers and color names to QML consumers.');
 INSERT INTO files VALUES(47,'WHEEL.db','SQLite metadata store defined in AGENTS.md for file/function and change tracking.');
+INSERT INTO files VALUES(48,'game/ui/GridShakeEffector.qml','Battle grid shake effector component animating translate offsets');
 CREATE TABLE defs (
   id INTEGER PRIMARY KEY,
   file_id INTEGER NOT NULL,
@@ -64,7 +65,7 @@ CREATE TABLE defs (
 INSERT INTO defs VALUES(1,1,'signal','distributeBlockLaunchPayload(payload)','payload','Emitted when a block launch payload is generated within this grid before augmentation.');
 INSERT INTO defs VALUES(2,1,'signal','distributedBlockLaunchPayload(payload)','payload','Broadcast payload describing a launch event including grid context for scene listeners.');
 INSERT INTO defs VALUES(3,1,'function','receiveLocalBlockLaunchPayload(payload)','payload','Augments a locally generated launch payload with this grid''s UUID before rebroadcasting.');
-INSERT INTO defs VALUES(4,1,'function','calculateLaunchDamage(payload)','payload','Applies launch payload damage to column blocks starting from the bottom row and cascades remaining damage upward.');
+INSERT INTO defs VALUES(4,1,'function','calculateLaunchDamage(payload)','payload','Resolves incoming launch damage for a column, routing hits through hero bindings, triggering shake feedback, and returning breach metadata.');
 INSERT INTO defs VALUES(5,1,'function','launchMatchedBlocks()','','Transitions matched blocks into launch state and emits launch events for each.');
 INSERT INTO defs VALUES(6,1,'property','property string uuid','','Unique identifier assigned to each battle grid instance for payload attribution.');
 INSERT INTO defs VALUES(7,1,'property','property int mainHealth','','Tracks the player''s primary health pool to receive direct launch damage overflow.');
@@ -96,7 +97,7 @@ INSERT INTO defs VALUES(32,1,'function','allEntriesIdleDestroyedOrMissing()','',
 INSERT INTO defs VALUES(33,1,'function','hasMatchedBlocks()','','Returns true if any grid entry is currently marked as matched.');
 INSERT INTO defs VALUES(34,1,'function','buildLaunchSequence()','','Constructs the snake-order traversal used for sequential block launches.');
 INSERT INTO defs VALUES(35,1,'function','prepareLaunchSequence()','','Initializes the launch sequence and resets iteration state before launching blocks.');
-INSERT INTO defs VALUES(36,1,'function','triggerLaunchForEntry(entry, row, column)','entry, row, column','Switches a matched entry into launch state and emits its payload.');
+INSERT INTO defs VALUES(36,1,'function','triggerLaunchForEntry(entry, row, column)','entry, row, column','Switches a matched entry into launch state and emits a payload annotated with block color and origin metadata.');
 INSERT INTO defs VALUES(37,1,'function','stopAllStateTimers()','','Stops all automation timers before transitioning to a new state.');
 INSERT INTO defs VALUES(38,1,'function','checkCompactStateCompletion()','','Advances to fill once compaction settles and only idle or empty slots remain.');
 INSERT INTO defs VALUES(39,1,'function','checkFillStateCompletion()','','Moves the grid into match state once every cell is populated and idle.');
@@ -115,7 +116,7 @@ INSERT INTO defs VALUES(51,12,'function','cloneRecord()',NULL,'Returns a lightwe
 INSERT INTO defs VALUES(52,11,'function','heroColor()',NULL,'Derives the hex color used for the hero border based on the assigned card color palette.');
 INSERT INTO defs VALUES(53,11,'function','applyCard(record)','record:var','Convenience helper to push a powerup record into the hero for consistent name, color, and span sizing.');
 INSERT INTO defs VALUES(54,10,'function','repositionCards()',NULL,'Recomputes card home positions when the sidebar resizes and snaps existing drag items back into place.');
-INSERT INTO defs VALUES(55,10,'function','homeXForSlot()',NULL,'Calculates the right-aligned X position for a sidebar card.');
+INSERT INTO defs VALUES(55,10,'function','homeXForSlot()',NULL,'Returns the left-aligned X origin so sidebar cards sit against content padding.');
 INSERT INTO defs VALUES(56,10,'function','homeYForSlot(slotIndex)','slotIndex:int','Returns the vertical anchor for a given slot index using the configured spacing.');
 INSERT INTO defs VALUES(57,10,'function','destroyCards()',NULL,'Destroys all drag items, heroes, and runtime card data before rebuilding the sidebar.');
 INSERT INTO defs VALUES(58,10,'function','rebuildCards()',NULL,'Re-creates sidebar cards from the current loadout array, wiring drag + hero handling.');
@@ -129,15 +130,15 @@ INSERT INTO defs VALUES(65,10,'function','beginHeroPreview(slot)','slot:var','Ma
 INSERT INTO defs VALUES(66,10,'function','updateHeroPreview(slot)','slot:var','Moves the hero preview so it tracks the user drag path.');
 INSERT INTO defs VALUES(67,10,'function','endHeroPreview(slot, wasDragging)','slot:var, wasDragging:bool','Hides the hero preview and notifies observers that the preview phase finished.');
 INSERT INTO defs VALUES(68,10,'function','positionHero(slot)','slot:var','Aligns the hero overlay with the current drag position to mimic placement on the grid.');
-INSERT INTO defs VALUES(69,10,'function','distributeEnergy(blockColor, amount)','blockColor:string, amount:number','Routes earned energy to every sidebar card that matches the supplied color, advancing activation progress.');
+INSERT INTO defs VALUES(69,10,'function','distributeEnergy(blockColor, amount)','blockColor:string, amount:number','Routes earned energy to sidebar cards of the matching color, skipping heroes that have fallen.');
 INSERT INTO defs VALUES(70,3,'function','createBattleCardSidebarCard(cardComp, dragComp, heroComp, parent, gameScene, opts)','cardComp:Component, dragComp:Component, heroComp:Component, parent:Item, gameScene:var, opts:var','Constructs a drag-ready PowerupCard wrapper plus optional hero preview for the sidebar selection UI.');
 INSERT INTO defs VALUES(71,2,'function','refreshPlayerLoadout()',NULL,'Loads the current PlayerLoadout rows from the powerup DB so the sidebar stays in sync with Match Setup selections.');
 INSERT INTO defs VALUES(72,2,'function','registerSidebarForGrid(grid, sidebar)','grid:Item, sidebar:Item','Caches a sidebar reference by battle grid UUID so reward logic can route energy to the right card set.');
 INSERT INTO defs VALUES(73,2,'function','sidebarForGrid(grid)','grid:Item','Looks up a registered BattleCardSidebar for the provided grid UUID.');
 INSERT INTO defs VALUES(74,2,'function','handleHeroPlacementRequest(cardData, heroItem, sceneX, sceneY)',NULL,'Validates drag drops from the sidebar and finalizes hero placement if the drop is fully over the owning battle grid.');
 INSERT INTO defs VALUES(75,2,'function','heroPlacementBoundsValid(grid, cardData, sceneX, sceneY)',NULL,'Checks whether the projected hero footprint fits entirely within the grid surface before allowing placement.');
-INSERT INTO defs VALUES(76,2,'function','finalizeHeroPlacement(cardData, heroItem, placedHero)',NULL,'Locks a powerup card after spawning its hero and hides the preview overlay.');
-INSERT INTO defs VALUES(77,2,'function','processLaunchDamageRewards(sourceGrid, damageResult)',NULL,'Walks the BattleGrid damage summary and routes energy rewards to the launching grid’s sidebar.');
+INSERT INTO defs VALUES(76,2,'function','finalizeHeroPlacement(grid, cardData, heroItem, placedHero, placement)','grid:Item, cardData:var, heroItem:Item, placedHero:Item, placement:var','Commits a hero to the grid, syncs runtime state, and triggers its placement activation.');
+INSERT INTO defs VALUES(77,2,'function','processLaunchDamageRewards(sourceGrid, damageResult)',NULL,'Routes destroyed-block energy and breach rewards back to the launching grid''s sidebar.');
 INSERT INTO defs VALUES(78,2,'function','refreshOpponentLoadout()',NULL,'Builds a fallback set of powerup cards for the opponent using whatever schema data is available, even if catalog entries are missing.');
 INSERT INTO defs VALUES(79,2,'function','safeString(value, fallback)',NULL,'Utility ensuring attacker-provided data always resolves to a non-empty string.');
 INSERT INTO defs VALUES(80,2,'function','normalizedPowerupRecord(sourceRecord, slotIndex, prefix)',NULL,'Sanitizes an arbitrary powerup payload into the minimal card structure expected by loadouts and sidebars.');
@@ -152,7 +153,7 @@ INSERT INTO defs VALUES(88,1,'function','heroCellsForArea(row, column, rowSpan, 
 INSERT INTO defs VALUES(89,1,'function','heroAreasOverlap(a, b)',NULL,'Lightweight rectangle intersection helper for comparing hero footprints.');
 INSERT INTO defs VALUES(90,1,'function','canPlaceHero(cardUuid, row, column, rowSpan, colSpan)',NULL,'Determines whether a hero can be spawned at the requested footprint without overlapping existing heroes or leaving the grid.');
 INSERT INTO defs VALUES(91,1,'function','collectBoundBlocks(row, column, rowSpan, colSpan)',NULL,'Returns the current block wrappers that sit beneath a given hero footprint for later binding logic.');
-INSERT INTO defs VALUES(92,1,'function','registerHeroPlacement(cardUuid, heroItem, row, column, rowSpan, colSpan, metadata)',NULL,'Adds the placed hero to the grid registry and records its footprint, metadata, and bound blocks.');
+INSERT INTO defs VALUES(92,1,'function','registerHeroPlacement(cardUuid, heroItem, row, column, rowSpan, colSpan, metadata)',NULL,'Registers a hero on the grid, tagging its card data, footprint, and bound blocks for shared health tracking.');
 INSERT INTO defs VALUES(93,1,'function','releaseHeroPlacement(cardUuid)',NULL,'Removes a hero placement entry when the associated card is defeated or despawned.');
 INSERT INTO defs VALUES(94,13,'property','property var pendingDebugLoadout','','Stores the selected loadout so DebugScene can be spawned with the latest MatchSetup choices.');
 INSERT INTO defs VALUES(95,13,'function','openMatchSetup()','','Activates the MatchSetup loader unless it is already open or a debug scene is running.');
@@ -616,6 +617,45 @@ INSERT INTO defs VALUES(552,15,'function','sanitize_identifier(name)','name','Va
 INSERT INTO defs VALUES(553,15,'function','sql_quote(value)','value','Escapes single quotes and wraps a value for safe inclusion in literal SQL.');
 INSERT INTO defs VALUES(554,15,'function','usage()','None','Prints a concise help screen covering global options and subcommands.');
 INSERT INTO defs VALUES(555,15,'function','wrap_like(value)','value','Ensures LIKE filter inputs gain wildcard markers unless explicitly supplied.');
+INSERT INTO defs VALUES(556,48,'function','triggerImpact()',NULL,'Applies a short random offset using the configured impact amplitude.');
+INSERT INTO defs VALUES(557,48,'function','triggerBreach()',NULL,'Applies an exaggerated offset to emphasize a full column breach.');
+INSERT INTO defs VALUES(558,48,'function','pulse(amplitude, duration)','amplitude:number, duration:int','Internal helper that randomizes a shake direction and animates the offsets back to rest.');
+INSERT INTO defs VALUES(559,6,'member','property var runtimeData',NULL,'Optional reference to the runtime PowerupCardModel so the card can reflect live energy progress.');
+INSERT INTO defs VALUES(560,6,'member','readonly property real runtimeEnergyProgress',NULL,'Normalized energy fill derived from runtimeData.energyProgress for sidebar progress visuals.');
+INSERT INTO defs VALUES(561,10,'member','property Item battleGrid',NULL,'Reference to the paired BattleGrid so slot sizing and anchoring can follow the grid.');
+INSERT INTO defs VALUES(562,10,'member','property real slotHeight',NULL,'Computed slot height capped by the linked battle grid height to keep four cards visible.');
+INSERT INTO defs VALUES(563,10,'member','property real slotWidth',NULL,'Dynamic slot width that stretches cards to fill the sidebar minus padding.');
+INSERT INTO defs VALUES(564,25,'function','ensureHeroWithinBounds()',NULL,'Clamp hero health to the legal range so shared block bindings stay consistent.');
+INSERT INTO defs VALUES(565,25,'function','resetHeroVitals()',NULL,'Reinitialize the hero''s current health to its computed maximum.');
+INSERT INTO defs VALUES(566,25,'function','applyHeroDamage(amount)','amount:number','Subtract damage from the hero, returning the post-damage health for downstream checks.');
+INSERT INTO defs VALUES(567,25,'function','applyHeroHealing(amount)','amount:number','Restore hero health while respecting the maximum so defenses reflect the buff.');
+INSERT INTO defs VALUES(568,25,'function','consumeEnergy()',NULL,'Spend the stored energy requirement when a powerup activates and recompute readiness.');
+INSERT INTO defs VALUES(569,25,'function','resetEnergy()',NULL,'Clear accumulated energy and notify listeners that activation is on cooldown.');
+INSERT INTO defs VALUES(570,25,'function','markHeroPlacedState(alive)','alive:bool','Toggle hero placed flags and refresh vitals when the card deploys onto a grid.');
+INSERT INTO defs VALUES(571,25,'member','readonly property int heroMaxHealth',NULL,'Derived maximum hero health based on the card configuration.');
+INSERT INTO defs VALUES(572,25,'member','property int heroCurrentHealth',NULL,'Mutable hero health mirrored onto bound grid blocks and UI.');
+INSERT INTO defs VALUES(573,25,'member','readonly property real heroHealthProgress',NULL,'Normalized hero health used for lifebar visuals and bindings.');
+INSERT INTO defs VALUES(574,25,'member','readonly property bool heroAlive',NULL,'Convenience flag indicating whether the deployed hero still has remaining health.');
+INSERT INTO defs VALUES(575,25,'member','property var battleGrid',NULL,'Reference to the grid currently hosting the hero so activations know their context.');
+INSERT INTO defs VALUES(576,25,'function','resetAfterHeroRemoval()',NULL,'Clear hero bindings after defeat, drop health to zero, and unlock redeployment.');
+INSERT INTO defs VALUES(577,10,'signal','signal powerupActivationRequested(var cardData)','cardData','Emitted when a charged card is clicked to activate its powerup instead of dragging.');
+INSERT INTO defs VALUES(578,10,'function','requestHeroActivation(slot)','slot:var','Validates hero state and emits powerupActivationRequested when a charged card is clicked.');
+INSERT INTO defs VALUES(579,1,'function','applyBlockDelta(row, column, amount, operation, context)','row:int, column:int, amount:number, operation:string, context:var','Adjust a single block or hero cell by the requested delta, returning destruction details for ability effects.');
+INSERT INTO defs VALUES(580,1,'function','applyBlockDeltaList(cells, amount, operation, context)','cells:var, amount:number, operation:string, context:var','Batch helper that routes area effects across multiple blocks using applyBlockDelta.');
+INSERT INTO defs VALUES(581,1,'function','applyHeroDeltaByColor(color, amount, operation, context)','color:string, amount:number, operation:string, context:var','Apply damage or healing to every hero placement matching the requested card color.');
+INSERT INTO defs VALUES(582,1,'function','requestSwapWrappers(row1, column1, row2, column2)','row1:int, column1:int, row2:int, column2:int','Attempts an adjacent swap while keeping hero placements intact, shifting entire hero groups when required.');
+INSERT INTO defs VALUES(583,1,'function','handleHeroDefeat(placement, context)','placement:var, context:var','Tears down a defeated hero, flipping bound blocks to explode and releasing the placement.');
+INSERT INTO defs VALUES(584,1,'function','applyDamageToHeroCell(row, column, amount, context)','row:int, column:int, amount:number, context:var','Redirect column damage into a hero binding, updating shared health and triggering defeat logic.');
+INSERT INTO defs VALUES(585,1,'function','applyHeroHealingAt(row, column, amount, context)','row:int, column:int, amount:number, context:var','Heals the hero bound to the given cell and refreshes lifebar-bound block health.');
+INSERT INTO defs VALUES(586,1,'function','attemptHeroShift(placement, deltaRow, deltaCol)','placement:var, deltaRow:int, deltaCol:int','Moves a hero footprint as a unit when swaps target one of its blocks, repositioning bound wrappers if valid.');
+INSERT INTO defs VALUES(587,1,'function','ensureHeroCellMap()',NULL,'Synchronize the hero occupancy matrix with the current grid dimensions.');
+INSERT INTO defs VALUES(588,1,'function','heroPlacementForCell(row, column)','row:int, column:int','Returns the registered hero placement covering the requested cell, if any.');
+INSERT INTO defs VALUES(589,1,'function','bindHeroPlacement(placement)','placement:var','Recompute a hero''s bound block list and heroCell map after placement or movement.');
+INSERT INTO defs VALUES(590,1,'function','refreshHeroBlockHealth(placement)','placement:var','Push the hero''s current health value into every bound block wrapper.');
+INSERT INTO defs VALUES(591,1,'function','clearHeroPlacementCells(placement)','placement:var','Removes hero binding metadata from the grid prior to rebinding or release.');
+INSERT INTO defs VALUES(592,2,'function','opposingGrid(grid)','grid:Item','Utility that returns the opposing battle grid for the provided grid reference.');
+INSERT INTO defs VALUES(593,2,'function','adjustGridHealth(targetGrid, amount, operation)','targetGrid:Item, amount:number, operation:string','Applies healing or damage to a battle grid''s health pool in response to powerup effects.');
+INSERT INTO defs VALUES(594,2,'function','triggerPowerupActivation(cardData, options)','cardData:var, options:var','Dispatches a powerup activation using the card''s targeting rules, draining energy unless instructed otherwise.');
 CREATE TABLE refs (
   id INTEGER PRIMARY KEY,
   def_id INTEGER NOT NULL,
@@ -639,6 +679,7 @@ INSERT INTO changes VALUES(7,'Restore sidebar drag interactions','Disable card c
 INSERT INTO changes VALUES(8,'Expand wheel CLI for metadata','Add todo/changes/files/defs shortcuts','complete');
 INSERT INTO changes VALUES(9,'Audit files table for CMake/QML','Ensure every CMakeLists.txt and QML file is registered','complete');
 INSERT INTO changes VALUES(10,'Import legacy WHEEl data','Sync missing files/defs from original db','complete');
+INSERT INTO changes VALUES(11,'Battle grid shake feedback and energy payout',NULL,'in_progress');
 CREATE TABLE change_files (
   id INTEGER PRIMARY KEY,
   change_id INTEGER NOT NULL,
@@ -735,6 +776,11 @@ INSERT INTO change_files VALUES(86,10,9);
 INSERT INTO change_files VALUES(87,10,6);
 INSERT INTO change_files VALUES(88,10,7);
 INSERT INTO change_files VALUES(89,10,15);
+INSERT INTO change_files VALUES(90,11,1);
+INSERT INTO change_files VALUES(91,11,2);
+INSERT INTO change_files VALUES(92,11,48);
+INSERT INTO change_files VALUES(93,11,10);
+INSERT INTO change_files VALUES(94,11,6);
 CREATE TABLE change_defs (
   id INTEGER PRIMARY KEY,
   change_id INTEGER NOT NULL,
@@ -1263,6 +1309,48 @@ INSERT INTO change_defs VALUES(515,10,15,553,'Imported function sql_quote(value)
 INSERT INTO change_defs VALUES(516,10,15,554,'Imported function usage() from WHEEl.db');
 INSERT INTO change_defs VALUES(517,10,15,555,'Imported function wrap_like(value) from WHEEl.db');
 INSERT INTO change_defs VALUES(518,10,39,476,'Corrected isSettled property signature from WHEEl.db import');
+INSERT INTO change_defs VALUES(519,11,1,4,NULL);
+INSERT INTO change_defs VALUES(520,11,1,36,NULL);
+INSERT INTO change_defs VALUES(521,11,2,77,NULL);
+INSERT INTO change_defs VALUES(522,11,48,556,NULL);
+INSERT INTO change_defs VALUES(523,11,48,557,NULL);
+INSERT INTO change_defs VALUES(524,11,48,558,NULL);
+INSERT INTO change_defs VALUES(525,11,6,559,NULL);
+INSERT INTO change_defs VALUES(526,11,6,560,NULL);
+INSERT INTO change_defs VALUES(527,11,10,561,NULL);
+INSERT INTO change_defs VALUES(528,11,10,562,NULL);
+INSERT INTO change_defs VALUES(529,11,10,563,NULL);
+INSERT INTO change_defs VALUES(530,11,12,564,NULL);
+INSERT INTO change_defs VALUES(531,11,12,565,NULL);
+INSERT INTO change_defs VALUES(532,11,12,566,NULL);
+INSERT INTO change_defs VALUES(533,11,12,567,NULL);
+INSERT INTO change_defs VALUES(534,11,12,568,NULL);
+INSERT INTO change_defs VALUES(535,11,12,569,NULL);
+INSERT INTO change_defs VALUES(536,11,12,570,NULL);
+INSERT INTO change_defs VALUES(537,11,12,571,NULL);
+INSERT INTO change_defs VALUES(538,11,12,572,NULL);
+INSERT INTO change_defs VALUES(539,11,12,573,NULL);
+INSERT INTO change_defs VALUES(540,11,12,574,NULL);
+INSERT INTO change_defs VALUES(541,11,12,575,NULL);
+INSERT INTO change_defs VALUES(542,11,12,576,NULL);
+INSERT INTO change_defs VALUES(543,11,10,577,NULL);
+INSERT INTO change_defs VALUES(544,11,10,578,NULL);
+INSERT INTO change_defs VALUES(545,11,1,579,NULL);
+INSERT INTO change_defs VALUES(546,11,1,580,NULL);
+INSERT INTO change_defs VALUES(547,11,1,581,NULL);
+INSERT INTO change_defs VALUES(548,11,1,582,NULL);
+INSERT INTO change_defs VALUES(549,11,1,583,NULL);
+INSERT INTO change_defs VALUES(550,11,1,584,NULL);
+INSERT INTO change_defs VALUES(551,11,1,585,NULL);
+INSERT INTO change_defs VALUES(552,11,1,586,NULL);
+INSERT INTO change_defs VALUES(553,11,1,587,NULL);
+INSERT INTO change_defs VALUES(554,11,1,588,NULL);
+INSERT INTO change_defs VALUES(555,11,1,589,NULL);
+INSERT INTO change_defs VALUES(556,11,1,590,NULL);
+INSERT INTO change_defs VALUES(557,11,1,591,NULL);
+INSERT INTO change_defs VALUES(558,11,2,592,NULL);
+INSERT INTO change_defs VALUES(559,11,2,593,NULL);
+INSERT INTO change_defs VALUES(560,11,2,594,NULL);
 CREATE TABLE todo (
   id INTEGER PRIMARY KEY,
   change_id INTEGER NOT NULL,

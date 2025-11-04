@@ -13,6 +13,14 @@ Data.PowerupItem {
     property bool heroPlaced: false
     property Item heroInstance: null
     property bool dragLocked: false
+    property var battleGrid: null
+
+    readonly property int heroMaxHealth: Math.max(1, powerupCardHealth || 1)
+    property int heroCurrentHealth: heroMaxHealth
+    readonly property real heroHealthProgress: heroMaxHealth > 0
+                                                ? Math.max(0, Math.min(heroCurrentHealth, heroMaxHealth)) / heroMaxHealth
+                                                : 0
+    readonly property bool heroAlive: heroCurrentHealth > 0
 
     signal energyChanged(int currentEnergy)
 
@@ -31,6 +39,70 @@ Data.PowerupItem {
         }
         energyChanged(currentEnergy)
         updateActivationState()
+    }
+
+    function ensureHeroWithinBounds() {
+        var maxHealth = heroMaxHealth
+        var adjusted = heroCurrentHealth
+        if (adjusted > maxHealth)
+            adjusted = maxHealth
+        if (adjusted < 0)
+            adjusted = 0
+        if (adjusted !== heroCurrentHealth)
+            heroCurrentHealth = adjusted
+    }
+
+    function resetHeroVitals() {
+        heroCurrentHealth = heroMaxHealth
+        ensureHeroWithinBounds()
+    }
+
+    function applyHeroDamage(amount) {
+        var dmg = Math.max(0, Math.floor(amount))
+        if (dmg <= 0)
+            return heroCurrentHealth
+        heroCurrentHealth = Math.max(0, heroCurrentHealth - dmg)
+        return heroCurrentHealth
+    }
+
+    function applyHeroHealing(amount) {
+        var heal = Math.max(0, Math.floor(amount))
+        if (heal <= 0)
+            return heroCurrentHealth
+        heroCurrentHealth = Math.min(heroMaxHealth, heroCurrentHealth + heal)
+        return heroCurrentHealth
+    }
+
+    function consumeEnergy() {
+        if (powerupCardEnergyRequired <= 0)
+            return
+        if (currentEnergy <= 0)
+            return
+        currentEnergy = Math.max(0, currentEnergy - powerupCardEnergyRequired)
+        ensureEnergyWithinBounds()
+    }
+
+    function resetEnergy() {
+        if (currentEnergy === 0)
+            return
+        currentEnergy = 0
+        ensureEnergyWithinBounds()
+    }
+
+    function resetAfterHeroRemoval() {
+        heroPlaced = false
+        heroInstance = null
+        dragLocked = false
+        heroCurrentHealth = 0
+        ensureHeroWithinBounds()
+        battleGrid = null
+    }
+
+    function markHeroPlacedState(alive) {
+        heroPlaced = !!alive
+        dragLocked = !!alive
+        if (alive)
+            resetHeroVitals()
     }
 
     function updateActivationState() {
@@ -78,6 +150,7 @@ Data.PowerupItem {
         powerupHeroRowSpan = record.powerupHeroRowSpan || 1
         powerupHeroColSpan = record.powerupHeroColSpan || 1
         dragLocked = record.dragLocked || false
+        resetHeroVitals()
         updateEnergyRequirement()
         ensureEnergyWithinBounds()
     }
@@ -105,4 +178,11 @@ Data.PowerupItem {
     onCurrentEnergyChanged: ensureEnergyWithinBounds()
     onPowerupHeroRowSpanChanged: ensureHeroSpanDefaults()
     onPowerupHeroColSpanChanged: ensureHeroSpanDefaults()
+    onPowerupCardHealthChanged: {
+        ensureHeroWithinBounds()
+    }
+
+    Component.onCompleted: {
+        resetHeroVitals()
+    }
 }
