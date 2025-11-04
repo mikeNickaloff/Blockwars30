@@ -49,7 +49,9 @@ Item {
                 powerupActualAmount: record.powerupActualAmount || 0,
                 powerupOperation: record.powerupOperation || "increase",
                 powerupIsCustom: !!record.powerupIsCustom,
-                powerupCardColor: record.powerupCardColor || "blue"
+                powerupCardColor: record.powerupCardColor || "blue",
+                powerupHeroRowSpan: record.powerupHeroRowSpan || 1,
+                powerupHeroColSpan: record.powerupHeroColSpan || 1
             })
         }
     }
@@ -74,7 +76,7 @@ Item {
         UI.PowerupCard {
             width: grid.cellWidth - 24
             height: grid.cellHeight - 24
-            anchors.margins: 12
+            //anchors.margins: 12
             powerupUuid: model.powerupUuid
             powerupName: model.powerupName
             powerupTarget: model.powerupTarget
@@ -97,7 +99,9 @@ Item {
                     powerupOperation: powerupOperation,
                     powerupIsCustom: powerupIsCustom,
                     powerupCardEnergyRequired: powerupCardEnergyRequired,
-                    powerupCardColor: powerupCardColor
+                    powerupCardColor: powerupCardColor,
+                    powerupHeroRowSpan: powerupHeroRowSpan,
+                    powerupHeroColSpan: powerupHeroColSpan
                 })
             }
         }

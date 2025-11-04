@@ -14,18 +14,16 @@ Item {
         yellow: "#ffeb3b"
     })
 
-    implicitWidth: 180
-    implicitHeight: 260
+    implicitWidth: 38
+    implicitHeight: 50
 
     readonly property real cardWidth: width > 0 ? width : implicitWidth
     readonly property real cardHeight: height > 0 ? height : implicitHeight
     readonly property real cardMinDim: Math.min(cardWidth, cardHeight)
-    readonly property real cardMargin: cardHeight * 0.06
-    readonly property real sectionSpacing: cardHeight * 0.04
-    readonly property real nameFont: Math.max(12, cardHeight * 0.1)
-    readonly property real infoFont: Math.max(10, cardHeight * 0.055)
-    readonly property real labelFont: Math.max(10, cardHeight * 0.05)
-    readonly property real energyFont: Math.max(11, cardHeight * 0.08)
+    readonly property real cardMargin: cardHeight * 0.08
+    readonly property real sectionSpacing: cardHeight * 0.08
+    readonly property real iconHeight: cardHeight * 0.25
+    readonly property real energyFont: Math.min(8, cardHeight * 0.22)
 
     property alias powerupData: powerup
     property alias powerupUuid: powerup.powerupUuid
@@ -39,6 +37,9 @@ Item {
     property alias powerupIsCustom: powerup.powerupIsCustom
     property alias powerupCardEnergyRequired: powerup.powerupCardEnergyRequired
     property alias powerupCardColor: powerup.powerupCardColor
+    property alias powerupHeroRowSpan: powerup.powerupHeroRowSpan
+    property alias powerupHeroColSpan: powerup.powerupHeroColSpan
+    property bool interactive: true
 
     signal activated(string powerupUuid)
 
@@ -63,6 +64,8 @@ Item {
         powerup.powerupOperation = record.powerupOperation || powerup.operations.Increase
         powerup.powerupIsCustom = !!record.powerupIsCustom
         powerup.powerupCardColor = record.powerupCardColor || "blue"
+        powerup.powerupHeroRowSpan = record.powerupHeroRowSpan || powerup.powerupHeroRowSpan
+        powerup.powerupHeroColSpan = record.powerupHeroColSpan || powerup.powerupHeroColSpan
         powerup.updateEnergyRequirement()
     }
 
@@ -108,28 +111,12 @@ Item {
             anchors.fill: parent
             anchors.margins: cardMargin
             spacing: sectionSpacing
-
-            Text {
-                Layout.fillWidth: true
-                text: powerup.powerupName.length ? powerup.powerupName : qsTr("Unnamed Powerup")
-                font.pixelSize: nameFont
-                font.bold: true
-                color: "#ffffff"
-                horizontalAlignment: Text.AlignHCenter
-            }
-
-            Text {
-                Layout.fillWidth: true
-                text: powerup.powerupIsCustom ? qsTr("Custom Powerup") : qsTr("Built-in Powerup")
-                font.pixelSize: infoFont
-                color: powerup.powerupIsCustom ? "#64b5f6" : "#ffcc80"
-                horizontalAlignment: Text.AlignHCenter
-            }
+            Layout.alignment: Qt.AlignHCenter
 
             Item {
                 id: iconArea
                 Layout.fillWidth: true
-                Layout.preferredHeight: cardHeight * 0.45
+                Layout.preferredHeight: iconHeight
 
                 Loader {
                     anchors.fill: parent
@@ -139,32 +126,22 @@ Item {
                 }
             }
 
-            ColumnLayout {
+            Text {
                 Layout.fillWidth: true
-                spacing: cardHeight * 0.025
-
-                Text {
-                    Layout.alignment: Qt.AlignHCenter
-                    text: qsTr("Powerup Amount: %1").arg(formattedAmount())
-                    font.pixelSize: labelFont
-                    color: "#e8eaf6"
-                }
-
-                Text {
-                    Layout.alignment: Qt.AlignHCenter
-                    text: qsTr("Energy Cost: %1").arg(powerup.powerupCardEnergyRequired)
-                    font.pixelSize: energyFont
-                    color: "#64ffda"
-                }
+                text: qsTr("%1 ⚡").arg(powerup.powerupCardEnergyRequired)
+                font.pixelSize: 4
+                font.bold: true
+                color: "#64ffda"
+                horizontalAlignment: Text.AlignHCenter
             }
-
-            Item { Layout.fillHeight: true }
         }
     }
 
     MouseArea {
         anchors.fill: parent
-        hoverEnabled: true
+        hoverEnabled: card.interactive
+        enabled: card.interactive
+        acceptedButtons: card.interactive ? Qt.LeftButton : Qt.NoButton
         onClicked: activated(powerup.powerupUuid)
         cursorShape: Qt.PointingHandCursor
     }

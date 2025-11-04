@@ -29,6 +29,8 @@ QtObject {
     property string powerupOperation: operations.Increase
     property bool powerupIsCustom: false
     property string powerupCardColor: "blue"
+    property int powerupHeroRowSpan: 1
+    property int powerupHeroColSpan: 1
 
     property int powerupCardEnergyRequired: 0
 
@@ -115,9 +117,34 @@ QtObject {
     onPowerupActualAmountChanged: updateEnergyRequirement()
     onPowerupOperationChanged: updateEnergyRequirement()
 
+    function normalizedHeroSpan(value) {
+        var span = Number(value)
+        if (!isFinite(span))
+            span = 1
+        span = Math.floor(span)
+        if (span < 1)
+            span = 1
+        if (span > 6)
+            span = 6
+        return span
+    }
+
+    function ensureHeroSpanDefaults() {
+        var normalizedRows = normalizedHeroSpan(powerupHeroRowSpan)
+        if (normalizedRows !== powerupHeroRowSpan)
+            powerupHeroRowSpan = normalizedRows
+        var normalizedCols = normalizedHeroSpan(powerupHeroColSpan)
+        if (normalizedCols !== powerupHeroColSpan)
+            powerupHeroColSpan = normalizedCols
+    }
+
+    onPowerupHeroRowSpanChanged: ensureHeroSpanDefaults()
+    onPowerupHeroColSpanChanged: ensureHeroSpanDefaults()
+
     Component.onCompleted: {
         ensureSpecDataDefaults()
         powerupOperation = powerupTarget === targets.Enemy ? operations.Decrease : operations.Increase
+        ensureHeroSpanDefaults()
         updateEnergyRequirement()
     }
 }

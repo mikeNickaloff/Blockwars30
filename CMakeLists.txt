@@ -58,6 +58,8 @@ QML_FILES game/ui/MatchSetup.qml
 QML_FILES game/layouts.js
 RESOURCES .gitignore
 QML_FILES engine/GameStateMachine.qml
+QML_FILES game/data/PowerupCardModel.qml
+QML_FILES game/ui/BattleCardSidebar.qml game/ui/PowerupHero.qml
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.

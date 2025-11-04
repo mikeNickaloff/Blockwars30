@@ -16,9 +16,6 @@ Window {
             mainMenu.visible = false
             powerupEditor.visible = true
         }
-        onDebugChosen: {
-            debugScene.visible = true
-        }
     }
 
     PowerupEditor {
@@ -31,9 +28,4 @@ Window {
         }
     }
 
-    DebugScene {
-        anchors.fill: parent
-        id: debugScene
-        visible: false
-    }
 }

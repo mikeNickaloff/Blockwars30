@@ -134,6 +134,8 @@ Engine.GameScene {
         editingPowerup.powerupOperation = record.powerupOperation || editingPowerup.powerupOperation
         editingPowerup.powerupIsCustom = record.powerupIsCustom !== undefined ? !!record.powerupIsCustom : true
         editingPowerup.powerupCardColor = record.powerupCardColor || "blue"
+        editingPowerup.powerupHeroRowSpan = record.powerupHeroRowSpan || 1
+        editingPowerup.powerupHeroColSpan = record.powerupHeroColSpan || 1
         editingPowerup.updateEnergyRequirement()
     }
 
@@ -154,6 +156,8 @@ Engine.GameScene {
         editingPowerup.powerupActualAmount = 0
         editingPowerup.powerupIsCustom = true
         editingPowerup.powerupCardColor = "blue"
+        editingPowerup.powerupHeroRowSpan = 1
+        editingPowerup.powerupHeroColSpan = 1
         editingPowerup.updateEnergyRequirement()
     }
 
@@ -178,7 +182,9 @@ Engine.GameScene {
             powerupActualAmount: editingPowerup.powerupActualAmount,
             powerupOperation: editingPowerup.powerupOperation,
             powerupIsCustom: editingPowerup.powerupIsCustom,
-            powerupCardColor: editingPowerup.powerupCardColor
+            powerupCardColor: editingPowerup.powerupCardColor,
+            powerupHeroRowSpan: editingPowerup.powerupHeroRowSpan,
+            powerupHeroColSpan: editingPowerup.powerupHeroColSpan
         }
     }
 
@@ -345,6 +351,8 @@ Engine.GameScene {
                         powerupIsCustom: editingPowerup.powerupIsCustom
                         powerupCardEnergyRequired: editingPowerup.powerupCardEnergyRequired
                         powerupCardColor: editingPowerup.powerupCardColor
+                        powerupHeroRowSpan: editingPowerup.powerupHeroRowSpan
+                        powerupHeroColSpan: editingPowerup.powerupHeroColSpan
                     }
 
                     ColumnLayout {
@@ -394,6 +402,22 @@ Engine.GameScene {
                             if (currentIndex >= 0 && currentIndex < cardColorOptions.length)
                                 editingPowerup.powerupCardColor = cardColorOptions[currentIndex].value
                         }
+                    }
+
+                    Label { text: qsTr("Hero Rows") }
+                    SpinBox {
+                        from: 1
+                        to: 6
+                        value: editingPowerup.powerupHeroRowSpan
+                        onValueChanged: editingPowerup.powerupHeroRowSpan = Math.max(1, Math.min(6, value))
+                    }
+
+                    Label { text: qsTr("Hero Columns") }
+                    SpinBox {
+                        from: 1
+                        to: 6
+                        value: editingPowerup.powerupHeroColSpan
+                        onValueChanged: editingPowerup.powerupHeroColSpan = Math.max(1, Math.min(6, value))
                     }
 
                     Label { text: qsTr("Target") }

@@ -180,3 +180,81 @@ function registerBattleGrid(battleGrid) {
         battleGrid.distributeBlockLaunchPayload.connect(battleGrid.receiveLocalBlockLaunchPayload);
     }
 }
+
+/**
+ * createBattleCardSidebarCard
+ * Build a PowerupCard wrapped in Engine.GameDragItem plus optional hero preview.
+ *
+ * @param {Component} cardComp   Component producing UI.PowerupCard
+ * @param {Component} dragComp   Component producing Engine.GameDragItem
+ * @param {Component} heroComp   Component producing UI.PowerupHero (optional)
+ * @param {Item}      parent     Parent Item for the drag wrapper
+ * @param {QtObject}  gameScene  Scene reference for registration (optional)
+ * @param {Object}    opts       { width,height,x,y,z,namePrefix,cardProps,dragProps,heroProps }
+ * @return {{dragItem: Item, heroEntry: Item|null}|null} Wrapper containing the drag item and optional hero
+ */
+function createBattleCardSidebarCard(cardComp, dragComp, heroComp, parent, gameScene, opts) {
+    if (!cardComp || !dragComp)
+        return null;
+    opts = opts || {};
+
+    const width = opts.width || 180;
+    const height = opts.height || 220;
+    const x = opts.x !== undefined ? opts.x : 0;
+    const y = opts.y !== undefined ? opts.y : 0;
+    const z = opts.z !== undefined ? opts.z : 5;
+    const namePrefix = opts.namePrefix || "battleCard";
+
+    const cardName = uid(`${namePrefix}_entry`);
+    const dragName = uid(`${namePrefix}_drag`);
+
+    const card = cardComp.createObject(parent, Object.assign({
+        objectName: cardName,
+        width: width,
+        height: height
+    }, opts.cardProps || {}));
+    if (!card)
+        return null;
+
+    const dragItem = dragComp.createObject(parent, Object.assign({
+        objectName: dragName,
+        itemName: dragName,
+        gameScene: gameScene || parent,
+        entry: card,
+        width: width,
+        height: height,
+        x: x,
+        y: y,
+        z: z,
+        animationEnabledX: false,
+        animationEnabledY: false
+    }, opts.dragProps || {}));
+
+    if (!dragItem) {
+        card.destroy();
+        return null;
+    }
+
+    card.parent = dragItem;
+    card.x = 0;
+    card.y = 0;
+
+    var hero = null;
+    if (heroComp) {
+        var heroProps = Object.assign({
+            objectName: uid(`${namePrefix}_hero`),
+            visible: false
+        }, opts.heroProps || {});
+        if (!heroProps.parent)
+            heroProps.parent = parent;
+        hero = heroComp.createObject(heroProps.parent, heroProps);
+    }
+
+    if (gameScene && typeof gameScene.addSceneDragItem === "function")
+        gameScene.addSceneDragItem(dragItem.itemName, dragItem);
+
+    return {
+        dragItem: dragItem,
+        heroEntry: hero
+    };
+}

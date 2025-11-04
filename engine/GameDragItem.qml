@@ -24,6 +24,9 @@ AbstractGameItem {
     property bool animationEnabledX: true
     property bool animationEnabledY: true
 
+
+    property real homeX
+    property real homeY
     signal startedMoving(var entry)
     signal stoppedMoving(var entry)
     property bool isMoving: false

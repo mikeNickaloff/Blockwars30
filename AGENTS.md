@@ -50,6 +50,15 @@
 - There are many more use cases for wheel.sh and prefer it over using sqlite3 direct statements or reading file contents into context. 
 > ``` ./wheel.sh --help```
 
+- How to query and merge multiple tables (INNER JOIN) -- use the --merge parameter  lke "ON" and multiple --table parameters with space-separated columns
+> ```./wheel.sh query  files.relpath defs.signature defs.description --table files --table defs --merge defs.file_id,files.id```
+
+- How to do a keyword search for rows containing all keywords in the same row (over all columns):
+> ``` ./wheel.sh search term1 term2 term3 ... termX --table defs```
+
+- How to keyword search and return specific columns but search the entire row:
+> ```` ./wheel.sh search term1 term2 ... termX --table files --columns file.relpath,file.description```
+
 
 #### Uses
 

@@ -63,6 +63,7 @@ Item {
     property var blockMatrix: []
 
     property var __launchRelayRegistered: false
+    property var heroPlacements: ({})
 
     onPostSwapCascadingChanged: distributePostSwapCascadeStatus()
 
@@ -209,6 +210,97 @@ Item {
         const pos = cellPosition(row, column);
         wrapper.x = pos.x;
         wrapper.y = pos.y;
+    }
+
+    function heroPlacementKey(cardUuid) {
+        return cardUuid || "";
+    }
+
+    function hasHeroForCard(cardUuid) {
+        var key = heroPlacementKey(cardUuid);
+        return !!heroPlacements[key];
+    }
+
+    function heroAreaWithinBounds(row, column, rowSpan, colSpan) {
+        if (row < 0 || column < 0)
+            return false;
+        if ((row + rowSpan) > gridRows)
+            return false;
+        if ((column + colSpan) > gridCols)
+            return false;
+        return true;
+    }
+
+    function heroCellsForArea(row, column, rowSpan, colSpan) {
+        var cells = [];
+        for (var r = row; r < row + rowSpan; ++r) {
+            for (var c = column; c < column + colSpan; ++c) {
+                cells.push({ row: r, column: c });
+            }
+        }
+        return cells;
+    }
+
+    function heroAreasOverlap(a, b) {
+        if (!a || !b)
+            return false;
+        var aBottom = a.row + a.rowSpan - 1;
+        var aRight = a.column + a.colSpan - 1;
+        var bBottom = b.row + b.rowSpan - 1;
+        var bRight = b.column + b.colSpan - 1;
+        var horizontal = !(a.column > bRight || b.column > aRight);
+        var vertical = !(a.row > bBottom || b.row > aBottom);
+        return horizontal && vertical;
+    }
+
+    function canPlaceHero(cardUuid, row, column, rowSpan, colSpan) {
+        if (!heroAreaWithinBounds(row, column, rowSpan, colSpan))
+            return false;
+        if (hasHeroForCard(cardUuid))
+            return false;
+        var placement = { row: row, column: column, rowSpan: rowSpan, colSpan: colSpan };
+        for (var key in heroPlacements) {
+            if (!heroPlacements.hasOwnProperty(key))
+                continue;
+            var existing = heroPlacements[key];
+            if (!existing)
+                continue;
+            if (heroAreasOverlap(existing, placement))
+                return false;
+        }
+        return true;
+    }
+
+    function collectBoundBlocks(row, column, rowSpan, colSpan) {
+        var cells = heroCellsForArea(row, column, rowSpan, colSpan);
+        var bound = [];
+        for (var i = 0; i < cells.length; ++i) {
+            var cell = cells[i];
+            var wrapper = getBlockWrapper(cell.row, cell.column);
+            if (wrapper)
+                bound.push({ row: cell.row, column: cell.column, wrapper: wrapper });
+        }
+        return bound;
+    }
+
+    function registerHeroPlacement(cardUuid, heroItem, row, column, rowSpan, colSpan, metadata) {
+        var key = heroPlacementKey(cardUuid);
+        heroPlacements[key] = {
+            heroItem: heroItem,
+            row: row,
+            column: column,
+            rowSpan: rowSpan,
+            colSpan: colSpan,
+            metadata: metadata || {},
+            boundBlocks: collectBoundBlocks(row, column, rowSpan, colSpan)
+        };
+    }
+
+    function releaseHeroPlacement(cardUuid) {
+        var key = heroPlacementKey(cardUuid);
+        if (!heroPlacements.hasOwnProperty(key))
+            return;
+        delete heroPlacements[key];
     }
 
     function clearWrapperAt(row, column) {
@@ -782,15 +874,28 @@ Item {
                 continue;
 
             const targetHealth = entry.health;
+            var blockColor = entry.blockColor || (entry.entry && entry.entry.blockColor) || "";
             if (remaining >= targetHealth) {
                 remaining -= targetHealth;
                 entry.health = 0;
                 entry.blockState = "waitAndExplode";
-                damagedBlocks.push({ row: row, column: column, destroyed: true });
+                damagedBlocks.push({
+                                        row: row,
+                                        column: column,
+                                        destroyed: true,
+                                        color: blockColor,
+                                        energyReward: targetHealth
+                                    });
                 lastImpact = { row: row, column: column };
             } else {
                 entry.health = targetHealth - remaining;
-                damagedBlocks.push({ row: row, column: column, destroyed: false });
+                damagedBlocks.push({
+                                        row: row,
+                                        column: column,
+                                        destroyed: false,
+                                        color: blockColor,
+                                        energyReward: 0
+                                    });
                 remaining = 0;
                 lastImpact = { row: row, column: column };
             }

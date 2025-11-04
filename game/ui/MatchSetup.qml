@@ -112,7 +112,9 @@ Item {
             powerupOperation: record.powerupOperation || "increase",
             powerupIsCustom: !!record.powerupIsCustom,
             powerupCardEnergyRequired: record.powerupCardEnergyRequired || 0,
-            powerupCardColor: record.powerupCardColor || "blue"
+            powerupCardColor: record.powerupCardColor || "blue",
+            powerupHeroRowSpan: record.powerupHeroRowSpan || 1,
+            powerupHeroColSpan: record.powerupHeroColSpan || 1
         }
 
         if (slots[selectedSlot])
@@ -203,6 +205,8 @@ Item {
             property bool powerupIsCustom: false
             property int powerupCardEnergyRequired: 0
             property string powerupCardColor: "blue"
+            property int powerupHeroRowSpan: 1
+            property int powerupHeroColSpan: 1
             property alias card: slotCard
             property alias frame: slotFrame
 
@@ -223,6 +227,8 @@ Item {
                     powerupIsCustom = false
                     powerupCardEnergyRequired = 0
                     powerupCardColor = "blue"
+                    powerupHeroRowSpan = 1
+                    powerupHeroColSpan = 1
                     slotCard.applyRecord({
                         powerupUuid: "",
                         powerupName: "",
@@ -234,7 +240,9 @@ Item {
                         powerupOperation: "increase",
                         powerupIsCustom: false,
                         powerupCardEnergyRequired: 0,
-                        powerupCardColor: "blue"
+                        powerupCardColor: "blue",
+                        powerupHeroRowSpan: 1,
+                        powerupHeroColSpan: 1
                     })
                 } else {
                     hasPowerup = true
@@ -249,6 +257,8 @@ Item {
                     powerupIsCustom = record.powerupIsCustom ? true : false
                     powerupCardEnergyRequired = record.powerupCardEnergyRequired || 0
                     powerupCardColor = record.powerupCardColor || "blue"
+                    powerupHeroRowSpan = record.powerupHeroRowSpan || 1
+                    powerupHeroColSpan = record.powerupHeroColSpan || 1
                     slotCard.applyRecord(record)
                 }
             }
@@ -278,6 +288,8 @@ Item {
                     powerupIsCustom: slotRoot.powerupIsCustom
                     powerupCardEnergyRequired: slotRoot.powerupCardEnergyRequired
                     powerupCardColor: slotRoot.powerupCardColor
+                    powerupHeroRowSpan: slotRoot.powerupHeroRowSpan
+                    powerupHeroColSpan: slotRoot.powerupHeroColSpan
                 }
 
                 Column {

@@ -53,6 +53,18 @@ QtObject {
         return rows
     }
 
+    function normalizeHeroSpan(value) {
+        var span = Number(value)
+        if (!isFinite(span))
+            span = 1
+        span = Math.floor(span)
+        if (span < 1)
+            span = 1
+        if (span > 6)
+            span = 6
+        return span
+    }
+
     function ensureSchema() {
         withTransaction(function(tx) {
             tx.executeSql(
@@ -67,6 +79,8 @@ QtObject {
                         "operation TEXT NOT NULL, " +
                         "isCustom INTEGER NOT NULL DEFAULT 0, " +
                         "cardColor TEXT NOT NULL DEFAULT 'blue', " +
+                        "heroRowSpan INTEGER NOT NULL DEFAULT 1, " +
+                        "heroColSpan INTEGER NOT NULL DEFAULT 1, " +
                         "createdAt TEXT NOT NULL DEFAULT (datetime('now')), " +
                         "updatedAt TEXT NOT NULL DEFAULT (datetime('now'))" +
                         ")")
@@ -74,15 +88,25 @@ QtObject {
 
             var tableInfo = tx.executeSql("PRAGMA table_info(Powerups)")
             var hasCardColor = false
+            var hasHeroRowSpan = false
+            var hasHeroColSpan = false
             for (var i = 0; i < tableInfo.rows.length; ++i) {
                 var column = tableInfo.rows.item(i)
-                if (column && column.name === 'cardColor') {
+                if (!column)
+                    continue
+                if (column.name === 'cardColor')
                     hasCardColor = true
-                    break
-                }
+                else if (column.name === 'heroRowSpan')
+                    hasHeroRowSpan = true
+                else if (column.name === 'heroColSpan')
+                    hasHeroColSpan = true
             }
             if (!hasCardColor)
                 tx.executeSql("ALTER TABLE Powerups ADD COLUMN cardColor TEXT NOT NULL DEFAULT 'blue'")
+            if (!hasHeroRowSpan)
+                tx.executeSql("ALTER TABLE Powerups ADD COLUMN heroRowSpan INTEGER NOT NULL DEFAULT 1")
+            if (!hasHeroColSpan)
+                tx.executeSql("ALTER TABLE Powerups ADD COLUMN heroColSpan INTEGER NOT NULL DEFAULT 1")
             tx.executeSql(
                         "CREATE TABLE IF NOT EXISTS PlayerLoadout (" +
                         "slot INTEGER PRIMARY KEY CHECK(slot >= 0 AND slot < 4), " +
@@ -99,13 +123,13 @@ QtObject {
     function fetchAllPowerups() {
         ensureSchema()
         var records = queryAll(
-                    "SELECT uuid, name, target, targetSpec, targetSpecData, cardHealth, amount, operation, isCustom, cardColor " +
+                    "SELECT uuid, name, target, targetSpec, targetSpecData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan " +
                     "FROM Powerups ORDER BY name")
 
         if (!records.length) {
             seedBuiltinsIfNeeded()
             records = queryAll(
-                        "SELECT uuid, name, target, targetSpec, targetSpecData, cardHealth, amount, operation, isCustom, cardColor " +
+                        "SELECT uuid, name, target, targetSpec, targetSpecData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan " +
                         "FROM Powerups ORDER BY name")
         }
 
@@ -129,6 +153,9 @@ QtObject {
             }
         }
 
+        var heroRows = normalizeHeroSpan(row.heroRowSpan || row.powerupHeroRowSpan || 1)
+        var heroCols = normalizeHeroSpan(row.heroColSpan || row.powerupHeroColSpan || 1)
+
         return {
             powerupUuid: row.uuid || row.powerupUuid || "",
             powerupName: row.name || row.powerupName || "",
@@ -139,7 +166,9 @@ QtObject {
             powerupActualAmount: row.amount || row.powerupActualAmount || 0,
             powerupOperation: row.operation || row.powerupOperation || "increase",
             powerupIsCustom: !!(row.isCustom || row.powerupIsCustom),
-            powerupCardColor: (row.cardColor || row.powerupCardColor || "blue")
+            powerupCardColor: (row.cardColor || row.powerupCardColor || "blue"),
+            powerupHeroRowSpan: heroRows,
+            powerupHeroColSpan: heroCols
         }
     }
 
@@ -158,8 +187,8 @@ QtObject {
                     serialized = JSON.stringify(powerup.powerupTargetSpecData)
 
                 tx.executeSql(
-                            "INSERT OR REPLACE INTO Powerups (uuid, name, target, targetSpec, targetSpecData, cardHealth, amount, operation, isCustom, cardColor) " +
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            "INSERT OR REPLACE INTO Powerups (uuid, name, target, targetSpec, targetSpecData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan) " +
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             [
                                 powerup.powerupUuid,
                                 powerup.powerupName,
@@ -170,7 +199,9 @@ QtObject {
                                 powerup.powerupActualAmount || 0,
                                 powerup.powerupOperation || "increase",
                                 powerup.powerupIsCustom ? 1 : 0,
-                                (powerup.powerupCardColor || "blue")
+                                (powerup.powerupCardColor || "blue"),
+                                normalizeHeroSpan(powerup.powerupHeroRowSpan || 1),
+                                normalizeHeroSpan(powerup.powerupHeroColSpan || 1)
                             ])
             }
         })
@@ -210,7 +241,7 @@ QtObject {
         if (!uuid)
             return null
         var rows = queryAll(
-                    "SELECT uuid, name, target, targetSpec, targetSpecData, cardHealth, amount, operation, isCustom, cardColor " +
+                    "SELECT uuid, name, target, targetSpec, targetSpecData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan " +
                     "FROM Powerups WHERE uuid = ?",
                     [uuid])
         if (!rows.length)
@@ -230,12 +261,14 @@ QtObject {
         var operation = target === 'Enemy' ? 'decrease' : 'increase'
         var isCustom = record.powerupIsCustom === false ? 0 : 1
         var cardColor = (record.powerupCardColor || 'blue')
+        var heroRowSpan = normalizeHeroSpan(record.powerupHeroRowSpan || 1)
+        var heroColSpan = normalizeHeroSpan(record.powerupHeroColSpan || 1)
 
         withTransaction(function(tx) {
             tx.executeSql(
-                        "INSERT OR REPLACE INTO Powerups (uuid, name, target, targetSpec, targetSpecData, cardHealth, amount, operation, isCustom, cardColor) " +
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        [uuid, name, target, targetSpec, specData, cardHealth, amount, operation, isCustom, cardColor])
+                        "INSERT OR REPLACE INTO Powerups (uuid, name, target, targetSpec, targetSpecData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan) " +
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [uuid, name, target, targetSpec, specData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan])
         })
 
         return fetchPowerup(uuid)
@@ -255,18 +288,20 @@ QtObject {
         var operation = target === 'Enemy' ? 'decrease' : (powerup.powerupOperation || 'increase')
         var isCustom = powerup.powerupIsCustom ? 1 : 0
         var cardColor = (powerup.powerupCardColor || 'blue')
+        var heroRowSpan = normalizeHeroSpan(powerup.powerupHeroRowSpan || 1)
+        var heroColSpan = normalizeHeroSpan(powerup.powerupHeroColSpan || 1)
 
         withTransaction(function(tx) {
             var result = tx.executeSql(
-                        "UPDATE Powerups SET name = ?, target = ?, targetSpec = ?, targetSpecData = ?, cardHealth = ?, amount = ?, operation = ?, isCustom = ?, cardColor = ?, updatedAt = datetime('now') " +
+                        "UPDATE Powerups SET name = ?, target = ?, targetSpec = ?, targetSpecData = ?, cardHealth = ?, amount = ?, operation = ?, isCustom = ?, cardColor = ?, heroRowSpan = ?, heroColSpan = ?, updatedAt = datetime('now') " +
                         "WHERE uuid = ?",
-                        [name, target, targetSpec, specData, cardHealth, amount, operation, isCustom, cardColor, uuid])
+                        [name, target, targetSpec, specData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan, uuid])
 
             if (!result.rowsAffected)
                 tx.executeSql(
-                            "INSERT OR REPLACE INTO Powerups (uuid, name, target, targetSpec, targetSpecData, cardHealth, amount, operation, isCustom, cardColor) " +
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                            [uuid, name, target, targetSpec, specData, cardHealth, amount, operation, isCustom, cardColor])
+                            "INSERT OR REPLACE INTO Powerups (uuid, name, target, targetSpec, targetSpecData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan) " +
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            [uuid, name, target, targetSpec, specData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan])
         })
 
         return fetchPowerup(uuid)
@@ -309,9 +344,23 @@ QtObject {
         var rows = queryAll(
                     "SELECT l.slot AS slot, p.uuid AS uuid, p.name AS name, p.target AS target, p.targetSpec AS targetSpec, " +
                     "p.targetSpecData AS targetSpecData, p.cardHealth AS cardHealth, p.amount AS amount, p.operation AS operation, " +
-                    "p.isCustom AS isCustom, p.cardColor AS cardColor " +
+                    "p.isCustom AS isCustom, p.cardColor AS cardColor, p.heroRowSpan AS heroRowSpan, p.heroColSpan AS heroColSpan " +
                     "FROM PlayerLoadout l LEFT JOIN Powerups p ON p.uuid = l.powerupUuid ORDER BY l.slot")
-        return normalizeLoadoutRows(rows)
+        var normalized = normalizeLoadoutRows(rows)
+        var populateDefaults = true
+        for (var i = 0; i < normalized.length; ++i) {
+            if (normalized[i] && normalized[i].powerup) {
+                populateDefaults = false
+                break
+            }
+        }
+        if (!populateDefaults)
+            return normalized
+
+        var builtins = builtinPowerups()
+        for (var slot = 0; slot < normalized.length && slot < builtins.length; ++slot)
+            normalized[slot] = { slot: slot, powerup: builtins[slot] }
+        return normalized
     }
 
     function setLoadoutSlot(slot, powerupUuid) {
@@ -354,7 +403,9 @@ QtObject {
                 powerupActualAmount: 6,
                 powerupOperation: "decrease",
                 powerupIsCustom: false,
-                powerupCardColor: "red"
+                powerupCardColor: "red",
+                powerupHeroRowSpan: 2,
+                powerupHeroColSpan: 2
             },
             {
                 powerupUuid: "builtin-aegis-surge",
@@ -366,7 +417,9 @@ QtObject {
                 powerupActualAmount: 8,
                 powerupOperation: "increase",
                 powerupIsCustom: false,
-                powerupCardColor: "green"
+                powerupCardColor: "green",
+                powerupHeroRowSpan: 1,
+                powerupHeroColSpan: 1
             },
             {
                 powerupUuid: "builtin-arcane-draw",
@@ -378,7 +431,9 @@ QtObject {
                 powerupActualAmount: 3,
                 powerupOperation: "increase",
                 powerupIsCustom: false,
-                powerupCardColor: "blue"
+                powerupCardColor: "blue",
+                powerupHeroRowSpan: 1,
+                powerupHeroColSpan: 1
             }
         ]
     }
