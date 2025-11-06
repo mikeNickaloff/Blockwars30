@@ -5,6 +5,7 @@ import "." as UI
 import "../data" as Data
 import "../factory.js" as Factory
 import "../layouts.js" as Layout
+import "../scripts/battlegrid.js" as BattleGridLogic
 import QtQuick.Layouts
 import com.blockwars 1.0
 Item {
@@ -185,7 +186,7 @@ Item {
             fillStateCheckTimer.start();
             break;
         case "match":
-            markMatchedBlocks();
+            BattleGridLogic.markMatchedBlocks(root);
             matchStateCheckTimer.start();
           //  Qt.callLater(function() { evaluateMatchState(); });
             break;
@@ -1450,85 +1451,6 @@ Item {
         fillGrid();
     }
 
-    function markMatchedBlocks() {
-        ensureMatrix();
-
-        const matchedWrappers = [];
-        const registerMatch = function(wrapper) {
-            if (!wrapper)
-                return;
-            if (matchedWrappers.indexOf(wrapper) === -1)
-                matchedWrappers.push(wrapper);
-        };
-
-        // Horizontal runs
-        for (var row = 0; row < gridRows; ++row) {
-            var runColor = null;
-            var runWrappers = [];
-            for (var column = 0; column <= gridCols; ++column) {
-                const wrapper = column < gridCols ? blockMatrix[row][column] : null;
-                const entry = wrapper && wrapper.entry ? wrapper.entry : null;
-                const color = entry ? entry.blockColor : null;
-
-                if (color && color === runColor) {
-                    runWrappers.push(wrapper);
-                } else {
-                    if (runColor && runWrappers.length >= 3) {
-                        for (var idx = 0; idx < runWrappers.length; ++idx)
-                            registerMatch(runWrappers[idx]);
-                    }
-                    runColor = color;
-                    runWrappers = color ? [wrapper] : [];
-                }
-            }
-        }
-
-        // Vertical runs
-        for (var column = 0; column < gridCols; ++column) {
-            var vRunColor = null;
-            var vRunWrappers = [];
-            for (var row = 0; row <= gridRows; ++row) {
-                const wrapper = row < gridRows ? blockMatrix[row][column] : null;
-                const entry = wrapper && wrapper.entry ? wrapper.entry : null;
-                const color = entry ? entry.blockColor : null;
-
-                if (color && color === vRunColor) {
-                    vRunWrappers.push(wrapper);
-                } else {
-                    if (vRunColor && vRunWrappers.length >= 3) {
-                        for (var idx = 0; idx < vRunWrappers.length; ++idx)
-                            registerMatch(vRunWrappers[idx]);
-                    }
-                    vRunColor = color;
-                    vRunWrappers = color ? [wrapper] : [];
-                }
-            }
-        }
-
-        // Apply states: only wrappers in matchedWrappers should flip to matched.
-        for (var applyRow = 0; applyRow < gridRows; ++applyRow) {
-            for (var applyColumn = 0; applyColumn < gridCols; ++applyColumn) {
-                const applyWrapper = blockMatrix[applyRow][applyColumn];
-                if (!applyWrapper || !applyWrapper.entry)
-                    continue;
-
-                if (matchedWrappers.indexOf(applyWrapper) !== -1)
-                    applyWrapper.entry.blockState = "matched";
-                else if (applyWrapper.entry.blockState === "matched")
-                    applyWrapper.entry.blockState = "idle";
-            }
-        }
-
-        const matches = [];
-        for (var idx = 0; idx < matchedWrappers.length; ++idx) {
-            const entry = matchedWrappers[idx] && matchedWrappers[idx].entry;
-            if (entry && entry.itemName)
-                matches.push(entry.itemName);
-        }
-
-        return { matches: matches };
-    }
-
     function receiveLocalBlockLaunchPayload(payload) {
         if (!payload)
             return null;
@@ -1541,124 +1463,6 @@ Item {
         return enriched;
     }
 
-    function hasMissingOrDestroyedBlocks() {
-        ensureMatrix();
-        for (var row = 0; row < gridRows; ++row) {
-            for (var column = 0; column < gridCols; ++column) {
-                const entry = getBlockEntryAt(row, column);
-                if (!entry)
-                    return true;
-                const state = normalizeStateName(entry.blockState);
-                if (state === "destroyed")
-                    return true;
-            }
-        }
-        return false;
-    }
-
-    function hasActiveNonIdleBlocks() {
-        ensureMatrix();
-        for (var row = 0; row < gridRows; ++row) {
-            for (var column = 0; column < gridCols; ++column) {
-                const entry = getBlockEntryAt(row, column);
-                if (!entry)
-                    continue;
-                const state = normalizeStateName(entry.blockState);
-                if (state === "launch" || state === "match" || state === "explode")
-                    return true;
-            }
-        }
-        return false;
-    }
-
-    function handlePostSwapCascadeResolution() {
-        if (!postSwapCascading)
-            return false;
-        if (hasMissingOrDestroyedBlocks())
-            return false;
-        if (hasActiveNonIdleBlocks())
-            return false;
-        postSwapCascading = false;
-        requestState("idle");
-        return true;
-    }
-
-    function heroCellFulfillsIdle(row, column, entry) {
-        if (isHeroOccupiedCell(row, column))
-            return true;
-        if (entry && (entry.powerupHeroLinked || entry.heroLinked || entry.heroBindingKey || entry.powerupHeroUuid))
-            return true;
-        return false;
-    }
-
-    function allEntriesIdleAllowMissing() {
-        ensureMatrix();
-        for (var row = 0; row < gridRows; ++row) {
-            for (var column = 0; column < gridCols; ++column) {
-                const entry = getBlockEntryAt(row, column);
-                if (!entry)
-                    continue;
-                if (normalizeStateName(entry.blockState) !== "idle") {
-                    if (heroCellFulfillsIdle(row, column, entry))
-                        continue;
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
-    function allEntriesIdleNoMissing() {
-        ensureMatrix();
-        for (var row = 0; row < gridRows; ++row) {
-            for (var column = 0; column < gridCols; ++column) {
-                const entry = getBlockEntryAt(row, column);
-                if (!entry) {
-                    if (heroCellFulfillsIdle(row, column, entry))
-                        continue;
-                    return false;
-                }
-                if (normalizeStateName(entry.blockState) !== "idle") {
-                    if (heroCellFulfillsIdle(row, column, entry))
-                        continue;
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
-    function allEntriesIdleDestroyedOrMissing() {
-        ensureMatrix();
-        for (var row = 0; row < gridRows; ++row) {
-            for (var column = 0; column < gridCols; ++column) {
-                const entry = getBlockEntryAt(row, column);
-                if (!entry)
-                    continue;
-                const state = normalizeStateName(entry.blockState);
-                if (state !== "idle" && state !== "destroyed") {
-                    if (heroCellFulfillsIdle(row, column, entry))
-                        continue;
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
-    function hasMatchedBlocks() {
-        ensureMatrix();
-        for (var row = 0; row < gridRows; ++row) {
-            for (var column = 0; column < gridCols; ++column) {
-                const entry = getBlockEntryAt(row, column);
-                if (!entry)
-                    continue;
-                if (normalizeStateName(entry.blockState) === "matched")
-                    return true;
-            }
-        }
-        return false;
-    }
 
     function buildLaunchSequence() {
         var sequence = [];
@@ -1744,14 +1548,14 @@ Item {
     }
 
     function checkCompactStateCompletion() {
-        if (!allEntriesIdleAllowMissing())
+        if (!BattleGridLogic.allEntriesIdleAllowMissing(root))
             return;
         compactStateCheckTimer.stop();
         requestState("fill");
     }
 
     function checkFillStateCompletion() {
-        if (!allEntriesIdleNoMissing())
+        if (!BattleGridLogic.allEntriesIdleNoMissing(root))
             return;
         fillStateCheckTimer.stop();
         requestState("match");
@@ -1759,7 +1563,7 @@ Item {
 
     function evaluateMatchState() {
         matchStateCheckTimer.stop();
-        if (hasMatchedBlocks())
+        if (BattleGridLogic.hasMatchedBlocks(root))
             requestState("launch");
         else {
             postSwapCascading = false;
@@ -1768,7 +1572,7 @@ Item {
     }
 
     function checkLaunchStateCompletion() {
-        if (!allEntriesIdleDestroyedOrMissing())
+        if (!BattleGridLogic.allEntriesIdleDestroyedOrMissing(root))
             return;
         launchStateCheckTimer.stop();
         requestState("compact");

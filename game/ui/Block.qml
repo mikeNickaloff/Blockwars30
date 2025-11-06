@@ -287,4 +287,12 @@ property bool __battleGridSignalRegistered: false
         function stoppedMoving() {
             if (blockRoot.blockState === "moving") { blockRoot.blockState = "idle" }
         }
+        function serialize() {
+            return {
+                blockColor: blockRoot.blockColor || "",
+                row: blockRoot.row,
+                column: blockRoot.column,
+                health: blockRoot.health
+            };
+        }
 }

@@ -35,7 +35,7 @@ Item {
          if (!dragItem) { dragTimer.running = false; return }
          var overlap = listOverlappingItems(dragItem.itemName, "")
          for (var i=0; i<overlap.legth; i++) {
-             console.log("Item entered non-drop area", overlap[i].itemName)
+  //           console.log("Item entered non-drop area", overlap[i].itemName)
              itemEnteredNonDropArea(dragItem.itemName, overlap[i].itemName)
              if (activeDrag.target !== overlap[i]) { activeDrag.target.opacity = 1.0;  overlap[i].opacity = 0.5; activeDrag.target = overlap[i] }
 
@@ -45,7 +45,7 @@ Item {
     }
     function removeSceneItem(itemName) {
 
-        console.log("Removing item", itemName)
+        //console.log("Removing item", itemName)
         var itm = sceneItems[itemName];
       //  itm.destroy();
         sceneItems[itemName] = null
@@ -84,7 +84,7 @@ Item {
            console.log("Added",itemName,"to scene", sceneRoot)
     }
     function listSceneDropItemsAt(_x = -1, _y = -1, matchString = "") {
-        console.log("looking for items with boundaries containing", _x, _y);
+      //  console.log("looking for items with boundaries containing", _x, _y);
         var results = []
         var requirePosition = _x !== -1 && _y !== -1
         var needle = matchString ? ("" + matchString).toLowerCase() : ""
@@ -94,7 +94,7 @@ Item {
             var item = sceneItems[key]
             if (!item)
                 continue
-            console.log("testing",item,"dimensions to see if it contains",_x,_y)
+         //   console.log("testing",item,"dimensions to see if it contains",_x,_y)
             var itemName = item && item.itemName !== undefined ? item.itemName : key
             if (needle !== "" && ("" + itemName).toLowerCase().indexOf(needle) === -1)
                 continue
@@ -108,16 +108,16 @@ Item {
 
                 var width = item.itemWidth !== undefined ? item.itemWidth : (item.width !== undefined ? item.width : (item.implicitWidth !== undefined ? item.implicitWidth : 0))
                 var height = item.itemHeight !== undefined ? item.itemHeight : (item.height !== undefined ? item.height : (item.implicitHeight !== undefined ? item.implicitHeight : 0))
-                console.log("> cheking if ",left,top,"with dimensions",width,height, "contains",_x,_y)
+              //  console.log("> cheking if ",left,top,"with dimensions",width,height, "contains",_x,_y)
                 var right = left + width
                 var bottom = top + height
 
                 if (_x < left || _x > right || _y < top || _y > bottom)
                     continue
-                console.log(">> It does!");
+               // console.log(">> It does!");
 
             }
-            console.log(">> PASS!");
+          //  console.log(">> PASS!");
             results.push(item)
         }
 
@@ -193,7 +193,7 @@ Item {
         activeDrag.exiting = true;
     }
     function handleDragItemStartDrag(itemName, _x, _y) {
-        console.log("Game Scene detected drag start", itemName, _x, _y)
+        //console.log("Game Scene detected drag start", itemName, _x, _y)
         var dragItem = getSceneItem(itemName)
         activeDrag.source = dragItem
         activeDrag.target = null
@@ -205,7 +205,7 @@ Item {
         if (activeDrag.exiting) {
             activeDrag.target = null
             activeDrag.exiting = false
-            console.log("Game Scene detected drag exit from Drop Item")
+            //console.log("Game Scene detected drag exit from Drop Item")
         }
         var dragItem = activeDrag.source || getSceneItem(itemName)
         itemDragMoved(itemName, dragItem, _x, _y, offsets)
@@ -221,7 +221,7 @@ Item {
         var dragItem = activeDrag.source || getSceneItem(itemName)
         var dropItem = activeDrag.target
         if (dropItem == null) {
-            console.log("Game Scene detected drop on non-drop item. Fail.");
+    //        console.log("Game Scene detected drop on non-drop item. Fail.");
 
             var globalXY = dragItem.mapToGlobal(_x, _y);
 
@@ -235,7 +235,7 @@ Item {
             }
         } else {
 
-            console.log("Game Scene detected item drop", itemName, "at", _x, _y, "started at", _startx, _starty, dragItem, "Drop target:", dropItem);
+            //console.log("Game Scene detected item drop", itemName, "at", _x, _y, "started at", _startx, _starty, dragItem, "Drop target:", dropItem);
             var dropItemName = dropItem.itemName !== undefined ? dropItem.itemName : null;
             itemDroppedInDropArea(itemName, dragItem, dropItemName, dropItem, _startx, _starty, _x, _y);
         }

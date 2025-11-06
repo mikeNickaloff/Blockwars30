@@ -1,6 +1,21 @@
 // GameFactory.js
 .pragma library
 
+const CRC32_TABLE = (function() {
+    var table = [];
+    for (var i = 0; i < 256; ++i) {
+        var c = i;
+        for (var j = 0; j < 8; ++j) {
+            if (c & 1)
+                c = (c >>> 1) ^ 0xEDB88320;
+            else
+                c = c >>> 1;
+        }
+        table[i] = c >>> 0;
+    }
+    return table;
+})();
+
 let _seq = 0;
 function uid(prefix) {
     // Stable-enough unique-ish token for this process
@@ -167,6 +182,22 @@ function createBlock(blockComp, dragComp, parent, gameScene, opts) {
     }
 
     return dragItem;
+}
+
+function crc32(inp_string) {
+    if (!inp_string)
+        return "00000000";
+    var crc = 0xFFFFFFFF;
+    for (var i = 0; i < inp_string.length; ++i) {
+        var byte = inp_string.charCodeAt(i) & 0xFF;
+        var idx = (crc ^ byte) & 0xFF;
+        crc = (crc >>> 8) ^ CRC32_TABLE[idx];
+    }
+    var finalCrc = (crc ^ 0xFFFFFFFF) >>> 0;
+    var hex = finalCrc.toString(16);
+    while (hex.length < 8)
+        hex = "0" + hex;
+    return hex.toUpperCase();
 }
 
 function registerBattleGrid(battleGrid) {

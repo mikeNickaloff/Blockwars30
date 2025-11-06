@@ -54,6 +54,7 @@ INSERT INTO files VALUES(46,'pool.h','QObject-derived pool that serves determini
 INSERT INTO files VALUES(47,'WHEEL.db','SQLite metadata store defined in AGENTS.md for file/function and change tracking.');
 INSERT INTO files VALUES(48,'game/ui/GridShakeEffector.qml','Battle grid shake effector component animating translate offsets');
 INSERT INTO files VALUES(49,'game/ui/BattleGridHealthBar.qml','Displays a health progress bar synced to a battle grid''s main health.');
+INSERT INTO files VALUES(50,'game/scripts/battlegrid.js','Shared battle grid helper logic used by BattleGrid for match detection and state utilities.');
 CREATE TABLE defs (
   id INTEGER PRIMARY KEY,
   file_id INTEGER NOT NULL,
@@ -81,9 +82,6 @@ INSERT INTO defs VALUES(15,1,'signal','informPostSwapCascadeStatus(payload)','pa
 INSERT INTO defs VALUES(16,1,'property','property bool postSwapCascading','','Flags when the grid is processing match cascades triggered by a swap.');
 INSERT INTO defs VALUES(17,1,'function','distributePostSwapCascadeStatus()','','Emits the current post-swap cascade status payload to listeners.');
 INSERT INTO defs VALUES(18,1,'function','informOpponentPostSwapCascadeStatus(payload)','payload','Responds to an opponent''s cascade status; resumes compaction if the peer has finished cascading.');
-INSERT INTO defs VALUES(19,1,'function','hasMissingOrDestroyedBlocks()','','Scans the grid for empty or destroyed entries to determine if cascading should continue.');
-INSERT INTO defs VALUES(20,1,'function','hasActiveNonIdleBlocks()','','Checks for blocks engaged in active states such as launch, match, or explode.');
-INSERT INTO defs VALUES(21,1,'function','handlePostSwapCascadeResolution()','','Finalizes post-swap cascade flow by transitioning back to idle when no further cascades remain.');
 INSERT INTO defs VALUES(22,2,'property','property var turnCoordinator','','Tracks offense/defense grids awaiting turn state synchronization.');
 INSERT INTO defs VALUES(23,2,'function','normalizeState(value)','value','Utility converting a state value into its lowercase form for comparisons.');
 INSERT INTO defs VALUES(24,2,'function','finalizeTurnStateSync()','','Sets offense grid idle and defense grid waiting once the previous turn finishes.');
@@ -92,10 +90,6 @@ INSERT INTO defs VALUES(26,2,'function','handleTurnSwitch()','','Initiates turn 
 INSERT INTO defs VALUES(27,2,'function','distributePostSwapCascade(payload)','payload','Forwards post-swap cascade status to the opposing grid.');
 INSERT INTO defs VALUES(28,1,'property','property var launchSequence','','Sequence of grid coordinates used to launch matched blocks in snake order.');
 INSERT INTO defs VALUES(29,1,'property','property int launchSequenceIndex','','Index into the launch sequence indicating the next coordinate to process.');
-INSERT INTO defs VALUES(30,1,'function','allEntriesIdleAllowMissing()','','Checks whether every populated grid entry is idle while allowing empty slots.');
-INSERT INTO defs VALUES(31,1,'function','allEntriesIdleNoMissing()','','Verifies the grid is fully populated and every block is idle.');
-INSERT INTO defs VALUES(32,1,'function','allEntriesIdleDestroyedOrMissing()','','Ensures remaining blocks are either idle, destroyed, or absent before compacting again.');
-INSERT INTO defs VALUES(33,1,'function','hasMatchedBlocks()','','Returns true if any grid entry is currently marked as matched.');
 INSERT INTO defs VALUES(34,1,'function','buildLaunchSequence()','','Constructs the snake-order traversal used for sequential block launches.');
 INSERT INTO defs VALUES(35,1,'function','prepareLaunchSequence()','','Initializes the launch sequence and resets iteration state before launching blocks.');
 INSERT INTO defs VALUES(36,1,'function','triggerLaunchForEntry(entry, row, column)','entry, row, column','Switches a matched entry into launch state and emits a payload annotated with block color and origin metadata.');
@@ -415,7 +409,6 @@ INSERT INTO defs VALUES(349,1,'function','handleStateChange(newState, oldState)'
 INSERT INTO defs VALUES(350,1,'function','isLifecycleQueued(baseState)','baseState','Checks the queue and current item to avoid enqueuing duplicate lifecycles.');
 INSERT INTO defs VALUES(351,1,'function','isPromiseLike(value)','value','Detects whether the lifecycle main returned a promise so the queue can await it.');
 INSERT INTO defs VALUES(352,1,'function','launchMatchedBlocks()','None','Switches matched block entries into launch state and returns the list of launched identifiers.');
-INSERT INTO defs VALUES(353,1,'function','markMatchedBlocks()','None','Scans the grid for horizontal and vertical runs of three or more like-colored blocks, ignoring hero-occupied cells so only free blocks become matched.');
 INSERT INTO defs VALUES(354,1,'function','moveWrapper(wrapper, targetRow, targetColumn)','wrapper, targetRow, targetColumn','Repositions a wrapper to a new grid coordinate, delegating to attemptHeroShift when the wrapper belongs to a hero footprint.');
 INSERT INTO defs VALUES(355,1,'function','normalizeStateName(value)','value','Normalizes incoming state tokens to lower-case strings for lookup in the triplet list.');
 INSERT INTO defs VALUES(356,1,'function','processNextQueueItem()','None','Executes the next queued lifecycle event, honoring promise results before proceeding.');
@@ -669,7 +662,18 @@ INSERT INTO defs VALUES(604,25,'function','markHeroDefeated()',NULL,'Locks the c
 INSERT INTO defs VALUES(605,11,'property','property string heroState',NULL,'Tracks the current block state for the bound hero so visuals can react alongside linked blocks.');
 INSERT INTO defs VALUES(606,1,'function','attachWrapperToHeroCell(placement, row, column, wrapper)','placement:var, row:int, column:int, wrapper:var','Links a wrapper with the owning hero placement cell and keeps the bound block offsets updated.');
 INSERT INTO defs VALUES(607,1,'function','detachWrapperFromHeroCell(placement, row, column, wrapper)','placement:var, row:int, column:int, wrapper:var','Removes a wrapper from hero-bound tracking and clears hero linkage when a cell no longer carries that block.');
-INSERT INTO defs VALUES(608,1,'function','heroCellFulfillsIdle(row, column, entry)','row:int, column:int, entry:var','Checks whether a grid cell should satisfy idle-phase requirements because it is occupied by a PowerupHero footprint.');
+INSERT INTO defs VALUES(608,50,'function','heroCellFulfillsIdle(grid, row, column, entry)','grid:var, row:int, column:int, entry:var','Reports whether the given grid cell should count as idle due to a PowerupHero footprint.');
+INSERT INTO defs VALUES(609,50,'function','allEntriesIdleAllowMissing(grid)','grid:var','Checks that every populated grid cell is idle, treating hero-covered slots as satisfied.');
+INSERT INTO defs VALUES(610,50,'function','allEntriesIdleNoMissing(grid)','grid:var','Ensures the grid is fully populated and that every cell is idle once hero exceptions are considered.');
+INSERT INTO defs VALUES(611,50,'function','allEntriesIdleDestroyedOrMissing(grid)','grid:var','Verifies only idle or destroyed blocks remain in the grid after hero-linked cells are exempted.');
+INSERT INTO defs VALUES(612,50,'function','hasMissingOrDestroyedBlocks(grid)','grid:var','Returns true when any cell is empty or destroyed, informing cascade handling.');
+INSERT INTO defs VALUES(613,50,'function','hasActiveNonIdleBlocks(grid)','grid:var','Detects if any block is still mid-action (launch, match, explode) before finishing cascades.');
+INSERT INTO defs VALUES(614,50,'function','handlePostSwapCascadeResolution(grid)','grid:var','Resolves post-swap cascading, resetting to idle once no loose blocks or active animations remain.');
+INSERT INTO defs VALUES(615,50,'function','hasMatchedBlocks(grid)','grid:var','Checks the grid for any entries marked as matched to decide if launch state should begin.');
+INSERT INTO defs VALUES(616,50,'function','markMatchedBlocks(grid)','grid:var','Evaluates horizontal and vertical runs, tagging qualifying wrappers as matched while respecting hero blockers.');
+INSERT INTO defs VALUES(617,3,'function','crc32(inp_string)','inp_string:string','Produces an uppercase CRC32 hex digest for the supplied block-color signature string.');
+INSERT INTO defs VALUES(618,21,'function','serialize()',NULL,'Returns a plain object snapshot of the block''s color, grid position, and health.');
+INSERT INTO defs VALUES(619,50,'function','serializeBlocks(grid)','grid:var','Serializes each block entry in the grid''s matrix using its serialize helper and returns the collection.');
 CREATE TABLE refs (
   id INTEGER PRIMARY KEY,
   def_id INTEGER NOT NULL,
