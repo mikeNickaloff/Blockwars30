@@ -649,30 +649,51 @@ Item {
     }
 
     function clearHeroPlacementCells(placement) {
-        if (!placement || !placement.boundBlocks)
+        if (!placement)
             return;
         ensureHeroCellMap();
-        for (var i = 0; i < placement.boundBlocks.length; ++i) {
-            var record = placement.boundBlocks[i];
-            if (!record)
-                continue;
-            if (record.row !== undefined && record.column !== undefined)
-                setHeroCellKey(record.row, record.column, null);
-            var wrap = record.wrapper;
-            if (!wrap)
-                continue;
-            unlinkWrapperFromHero(wrap);
+        if (placement.coverageCells && placement.coverageCells.length) {
+            for (var c = 0; c < placement.coverageCells.length; ++c) {
+                var coverageCell = placement.coverageCells[c];
+                if (!coverageCell)
+                    continue;
+                if (coverageCell.row === undefined || coverageCell.column === undefined)
+                    continue;
+                setHeroCellKey(coverageCell.row, coverageCell.column, null);
+            }
+        }
+        if (placement.boundBlocks) {
+            for (var i = 0; i < placement.boundBlocks.length; ++i) {
+                var record = placement.boundBlocks[i];
+                if (!record)
+                    continue;
+                var wrap = record.wrapper;
+                if (!wrap)
+                    continue;
+                unlinkWrapperFromHero(wrap);
+            }
         }
         if (placement.heroItem)
             placement.heroItem.heroState = "idle";
         placement.__stateSync = false;
         placement.boundBlocks = [];
+        placement.coverageCells = [];
     }
 
     function bindHeroPlacement(placement) {
         if (!placement)
             return;
         clearHeroPlacementCells(placement);
+        var areaCells = heroCellsForArea(placement.row, placement.column, placement.rowSpan, placement.colSpan);
+        placement.coverageCells = [];
+        for (var ac = 0; ac < areaCells.length; ++ac) {
+            var coverage = areaCells[ac];
+            if (!coverage)
+                continue;
+            placement.coverageCells.push({ row: coverage.row, column: coverage.column });
+            setHeroCellKey(coverage.row, coverage.column, placement.key);
+        }
+
         var bound = collectBoundBlocks(placement.row, placement.column, placement.rowSpan, placement.colSpan);
         placement.boundBlocks = [];
         for (var i = 0; i < bound.length; ++i) {
@@ -688,7 +709,6 @@ Item {
                                           relRow: record.row - placement.row,
                                           relCol: record.column - placement.column
                                       });
-            setHeroCellKey(record.row, record.column, placement.key);
         }
         if (placement.heroItem) {
             placement.heroItem.anchoredRow = placement.row;
@@ -903,11 +923,15 @@ Item {
             for (var e = 0; e < entering.length; ++e) {
                 var enteringCell = entering[e];
                 var incomingWrapper = getBlockWrapper(enteringCell.row, enteringCell.column);
-                if (!incomingWrapper)
-                    return false;
-                var otherPlacement = heroPlacementForWrapper(incomingWrapper);
-                if (otherPlacement && otherPlacement.key !== placement.key)
-                    return false;
+                if (incomingWrapper) {
+                    var otherPlacement = heroPlacementForWrapper(incomingWrapper);
+                    if (otherPlacement && otherPlacement.key !== placement.key)
+                        return false;
+                } else {
+                    var occupyingKey = heroKeyAt(enteringCell.row, enteringCell.column);
+                    if (occupyingKey && occupyingKey !== placement.key)
+                        return false;
+                }
                 incomingWrappers.push({ cell: enteringCell, wrapper: incomingWrapper });
             }
 
@@ -953,7 +977,10 @@ Item {
             for (var li = 0; li < incomingWrappers.length; ++li) {
                 var leaveCell = leaving[li];
                 var moveWrapper = incomingWrappers[li].wrapper;
-                setWrapperAt(leaveCell.row, leaveCell.column, moveWrapper);
+                if (moveWrapper)
+                    setWrapperAt(leaveCell.row, leaveCell.column, moveWrapper);
+                else
+                    clearWrapperAt(leaveCell.row, leaveCell.column);
             }
 
             placement.row = newRow;
@@ -1026,6 +1053,7 @@ Item {
             colSpan: colSpan,
             metadata: meta,
             boundBlocks: [],
+            coverageCells: [],
             __stateSync: false,
             __positionSyncCount: 0,
             __healthSyncCount: 0
