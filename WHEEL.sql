@@ -667,6 +667,9 @@ INSERT INTO defs VALUES(602,1,'function','isHeroOccupiedCell(row, column)','row:
 INSERT INTO defs VALUES(603,25,'property','property bool heroDefeated',NULL,'Indicates that the card’s hero has been defeated, disabling future energy gain and redeployment from this slot.');
 INSERT INTO defs VALUES(604,25,'function','markHeroDefeated()',NULL,'Locks the card after the bound hero is eliminated by zeroing energy, marking the slot as spent, and preventing further placement.');
 INSERT INTO defs VALUES(605,11,'property','property string heroState',NULL,'Tracks the current block state for the bound hero so visuals can react alongside linked blocks.');
+INSERT INTO defs VALUES(606,1,'function','attachWrapperToHeroCell(placement, row, column, wrapper)','placement:var, row:int, column:int, wrapper:var','Links a wrapper with the owning hero placement cell and keeps the bound block offsets updated.');
+INSERT INTO defs VALUES(607,1,'function','detachWrapperFromHeroCell(placement, row, column, wrapper)','placement:var, row:int, column:int, wrapper:var','Removes a wrapper from hero-bound tracking and clears hero linkage when a cell no longer carries that block.');
+INSERT INTO defs VALUES(608,1,'function','heroCellFulfillsIdle(row, column, entry)','row:int, column:int, entry:var','Checks whether a grid cell should satisfy idle-phase requirements because it is occupied by a PowerupHero footprint.');
 CREATE TABLE refs (
   id INTEGER PRIMARY KEY,
   def_id INTEGER NOT NULL,

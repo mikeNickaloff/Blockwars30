@@ -1,11 +1,12 @@
 # AGENT INSTRUCTIONS
 - Read this entire document and follow it's process strictly. Details matter here.
+- Do not re-invent the wheel.  Compare the descriptions of existing part of the project using ```./wheel.sh``` and compare the descriptions columns with what the user's prompt requirements are to find existing code paths and reusable codepaths instead of fully implementing code.
 - Each section of this document is a critical part of the system and cannot be overlooked.
 - DO NOT change the engine/* files unless asked to do so specifically by filename or with prior approval
 - Confirm any changes to engine/ as they will have large impacts
-- Don't flood qml files with functions.
-- Use declarative style that focuses on Item type creation where each Item type has only a few functions specific to just that kind of Item 
-- inherit additional functions by creating Components (File.qml will become the equivalent of a C++ metatype inheriting from Component named File { } automatically if imported with ```import "relpath/to"```)
+- Don't flood qml files with function after function. Break into multiple files separating related logic.
+- Use declarative style that focuses on class type creation where each class type has only a few functions specific to just that kind of class 
+- inherit additional functions by creating base classes (creating the file `File.qml` will automatically add `File { }` as a valid QML metatype)
 - Using multiple layers of defined metatypes is the key to making robust fully-featured QML code.
 - Don't stack all functions into single file. 
 - Break down into multiple QML files that inherit from each other based on their functionality.

@@ -6,7 +6,7 @@ import "../data" as Data
 import "../factory.js" as Factory
 import "../layouts.js" as Layout
 import QtQuick.Layouts
-
+import com.blockwars 1.0
 Item {
     id: root
     width: 400
@@ -83,6 +83,31 @@ Item {
 
     onPostSwapCascadingChanged: distributePostSwapCascadeStatus()
 
+    property var pools: []
+
+    Component {
+
+        id: poolComp
+        Pool {
+            property var colorsPool: []
+            property var usedPool: [];
+            currentIndex: Math.max(Math.floor(Math.random() * 1000), 100)
+            function getNextBlockColor() {
+                if (colorsPool.length > 0) {
+                    var _color = colorsPool.shift();
+                    colorsPool.push(_color);
+                    return _color;
+                }
+            }
+
+            Component.onCompleted: {
+                for (var i=0; i<currentIndex; i++) {
+                    colorsPool.push(colorAt(currentIndex - i));
+                }
+            }
+
+        }
+    }
     function normalizeStateName(value) {
         if (value === null || value === undefined)
             return "";
@@ -326,8 +351,12 @@ Item {
             if (currentState !== normalizedState)
                 linkedEntry.blockState = newState;
         }
-        if (placement.heroItem)
-            placement.heroItem.heroState = newState;
+        if (placement.heroItem) {
+            var stateValue = newState;
+            if (stateValue === undefined || stateValue === null)
+                stateValue = normalizedState || "idle";
+            placement.heroItem.heroState = stateValue;
+        }
         placement.__stateSync = false;
     }
 
@@ -455,8 +484,6 @@ Item {
         if (!wrapper)
             return;
 
-
-
         if (wrapper.entry) {
             wrapper.entry.row = row;
             wrapper.entry.column = column;
@@ -470,6 +497,15 @@ Item {
         const pos = cellPosition(row, column);
         wrapper.x = pos.x;
         wrapper.y = pos.y;
+
+        var heroKey = heroKeyAt(row, column);
+        if (heroKey) {
+            var placement = heroPlacementForKey(heroKey);
+            if (placement) {
+                attachWrapperToHeroCell(placement, row, column, wrapper);
+                refreshHeroBlockHealth(placement);
+            }
+        }
     }
 
     function heroPlacementKey(cardUuid) {
@@ -580,7 +616,13 @@ Item {
     function heroPlacementForWrapper(wrapper) {
         if (!wrapper)
             return null;
-        var key = wrapper.heroBindingKey || (wrapper.entry ? wrapper.entry.heroBindingKey : null);
+        var key = null;
+        if (wrapper.entry && wrapper.entry.heroBindingKey)
+            key = wrapper.entry.heroBindingKey;
+        if (!key && typeof wrapper.property === "function")
+            key = wrapper.property("heroBindingKey");
+        if (!key && wrapper.heroBindingKey !== undefined)
+            key = wrapper.heroBindingKey;
         return heroPlacementForKey(key);
     }
 
@@ -609,14 +651,16 @@ Item {
             wrapper.entry.__previousGridRow = wrapper.entry.row;
             wrapper.entry.__previousGridColumn = wrapper.entry.column;
         }
-        wrapper.heroBindingKey = null;
-        wrapper.powerupHeroLinked = false;
-        wrapper.powerupHeroUuid = "";
-        wrapper.powerupHeroItem = null;
-        wrapper.powerupHeroRowOffset = 0;
-        wrapper.powerupHeroColOffset = 0;
-        wrapper.heroAnchorRow = undefined;
-        wrapper.heroAnchorColumn = undefined;
+        if (typeof wrapper.setProperty === "function") {
+            wrapper.setProperty("heroBindingKey", null);
+            wrapper.setProperty("powerupHeroLinked", false);
+            wrapper.setProperty("powerupHeroUuid", "");
+            wrapper.setProperty("powerupHeroItem", null);
+            wrapper.setProperty("powerupHeroRowOffset", 0);
+            wrapper.setProperty("powerupHeroColOffset", 0);
+            wrapper.setProperty("heroAnchorRow", undefined);
+            wrapper.setProperty("heroAnchorColumn", undefined);
+        }
     }
 
     function linkWrapperToHero(wrapper, placement, row, column) {
@@ -625,14 +669,16 @@ Item {
         var heroKey = placement.key;
         var relRow = row - placement.row;
         var relCol = column - placement.column;
-        wrapper.heroBindingKey = heroKey;
-        wrapper.powerupHeroLinked = true;
-        wrapper.powerupHeroUuid = heroKey;
-        wrapper.powerupHeroItem = placement.heroItem || null;
-        wrapper.powerupHeroRowOffset = relRow;
-        wrapper.powerupHeroColOffset = relCol;
-        wrapper.heroAnchorRow = placement.row;
-        wrapper.heroAnchorColumn = placement.column;
+        if (typeof wrapper.setProperty === "function") {
+            wrapper.setProperty("heroBindingKey", heroKey);
+            wrapper.setProperty("powerupHeroLinked", true);
+            wrapper.setProperty("powerupHeroUuid", heroKey);
+            wrapper.setProperty("powerupHeroItem", placement.heroItem || null);
+            wrapper.setProperty("powerupHeroRowOffset", relRow);
+            wrapper.setProperty("powerupHeroColOffset", relCol);
+            wrapper.setProperty("heroAnchorRow", placement.row);
+            wrapper.setProperty("heroAnchorColumn", placement.column);
+        }
         if (wrapper.entry) {
             wrapper.entry.heroBindingKey = heroKey;
             wrapper.entry.heroLinked = true;
@@ -645,6 +691,67 @@ Item {
             wrapper.entry.__previousGridColumn = column;
             wrapper.entry.__heroHealthSyncGuard = false;
             wrapper.entry.__heroPositionGuard = false;
+        }
+    }
+
+    function attachWrapperToHeroCell(placement, row, column, wrapper) {
+        if (!placement || !wrapper)
+            return;
+        linkWrapperToHero(wrapper, placement, row, column);
+        if (!placement.boundBlocks)
+            placement.boundBlocks = [];
+        var target = null;
+        for (var i = 0; i < placement.boundBlocks.length; ++i) {
+            var record = placement.boundBlocks[i];
+            if (!record)
+                continue;
+            if (record.row === row && record.column === column) {
+                target = record;
+                break;
+            }
+            if (!target && record.wrapper === wrapper)
+                target = record;
+        }
+        if (!target) {
+            target = {
+                row: row,
+                column: column,
+                wrapper: wrapper,
+                relRow: row - placement.row,
+                relCol: column - placement.column
+            };
+            placement.boundBlocks.push(target);
+        } else {
+            target.row = row;
+            target.column = column;
+            target.wrapper = wrapper;
+            target.relRow = row - placement.row;
+            target.relCol = column - placement.column;
+        }
+        for (var j = placement.boundBlocks.length - 1; j >= 0; --j) {
+            var other = placement.boundBlocks[j];
+            if (!other || other === target)
+                continue;
+            if (other.wrapper === wrapper)
+                placement.boundBlocks.splice(j, 1);
+        }
+    }
+
+    function detachWrapperFromHeroCell(placement, row, column, wrapper) {
+        if (!placement)
+            return;
+        if (wrapper)
+            unlinkWrapperFromHero(wrapper);
+        if (!placement.boundBlocks || !placement.boundBlocks.length)
+            return;
+        for (var i = placement.boundBlocks.length - 1; i >= 0; --i) {
+            var record = placement.boundBlocks[i];
+            if (!record)
+                continue;
+            if ((wrapper && record.wrapper === wrapper) || (record.row === row && record.column === column)) {
+                placement.boundBlocks.splice(i, 1);
+                break;
+            }
         }
     }
 
@@ -700,15 +807,7 @@ Item {
             var record = bound[i];
             if (!record || !record.wrapper)
                 continue;
-            var wrapper = record.wrapper;
-            linkWrapperToHero(wrapper, placement, record.row, record.column);
-            placement.boundBlocks.push({
-                                          row: record.row,
-                                          column: record.column,
-                                          wrapper: wrapper,
-                                          relRow: record.row - placement.row,
-                                          relCol: record.column - placement.column
-                                      });
+            attachWrapperToHeroCell(placement, record.row, record.column, record.wrapper);
         }
         if (placement.heroItem) {
             placement.heroItem.anchoredRow = placement.row;
@@ -1082,7 +1181,15 @@ Item {
         ensureMatrix();
         if (row < 0 || row >= gridRows || column < 0 || column >= gridCols)
             return;
+        var existing = blockMatrix[row][column];
         blockMatrix[row][column] = null;
+        if (!existing)
+            return;
+        var heroKey = heroKeyAt(row, column);
+        var placement = heroKey ? heroPlacementForKey(heroKey) : heroPlacementForWrapper(existing);
+        if (!placement)
+            return;
+        detachWrapperFromHeroCell(placement, row, column, existing);
     }
 
     function teardownWrapper(wrapper, location) {
@@ -1199,6 +1306,7 @@ Item {
     }
 
     function fillGrid() {
+
         ensureMatrix();
         const fillDescending = normalizeStateName(launchDirection) === "up";
         const rowStart = fillDescending ? gridRows - 1 : 0;
@@ -1216,6 +1324,7 @@ Item {
                     continue;
                 if (getBlockWrapper(row, column))
                     continue;
+                var nextBlockColor = pools[column].getNextBlockColor()
 
                 const pos = cellPosition(row, column);
                 const dragItem = Factory.createBlock(
@@ -1233,7 +1342,7 @@ Item {
                                     row: row,
                                     column: column,
                                     maxRows: gridRows,
-                                    blockColor: blockPalette[(row + column) % blockPalette.length]
+                                    blockColor: nextBlockColor
                                 }
                             });
 
@@ -1474,6 +1583,14 @@ Item {
         return true;
     }
 
+    function heroCellFulfillsIdle(row, column, entry) {
+        if (isHeroOccupiedCell(row, column))
+            return true;
+        if (entry && (entry.powerupHeroLinked || entry.heroLinked || entry.heroBindingKey || entry.powerupHeroUuid))
+            return true;
+        return false;
+    }
+
     function allEntriesIdleAllowMissing() {
         ensureMatrix();
         for (var row = 0; row < gridRows; ++row) {
@@ -1481,8 +1598,11 @@ Item {
                 const entry = getBlockEntryAt(row, column);
                 if (!entry)
                     continue;
-                if (normalizeStateName(entry.blockState) !== "idle")
+                if (normalizeStateName(entry.blockState) !== "idle") {
+                    if (heroCellFulfillsIdle(row, column, entry))
+                        continue;
                     return false;
+                }
             }
         }
         return true;
@@ -1493,10 +1613,16 @@ Item {
         for (var row = 0; row < gridRows; ++row) {
             for (var column = 0; column < gridCols; ++column) {
                 const entry = getBlockEntryAt(row, column);
-                if (!entry)
+                if (!entry) {
+                    if (heroCellFulfillsIdle(row, column, entry))
+                        continue;
                     return false;
-                if (normalizeStateName(entry.blockState) !== "idle")
+                }
+                if (normalizeStateName(entry.blockState) !== "idle") {
+                    if (heroCellFulfillsIdle(row, column, entry))
+                        continue;
                     return false;
+                }
             }
         }
         return true;
@@ -1510,8 +1636,11 @@ Item {
                 if (!entry)
                     continue;
                 const state = normalizeStateName(entry.blockState);
-                if (state !== "idle" && state !== "destroyed")
+                if (state !== "idle" && state !== "destroyed") {
+                    if (heroCellFulfillsIdle(row, column, entry))
+                        continue;
                     return false;
+                }
             }
         }
         return true;
@@ -1872,7 +2001,14 @@ Item {
     }
 
     Component.onCompleted: {
+        for (var i=0; i<6; i++) {
+            var poolInst = poolComp.createObject(root);
+            pools[i] = poolInst;
+            pools[i].currentIndex = Math.floor(Math.random() * 1000)
+        }
         Factory.registerBattleGrid(root);
+
         requestState("init");
+
     }
 }

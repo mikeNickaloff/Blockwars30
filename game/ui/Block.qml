@@ -40,7 +40,8 @@ Item {
     property bool __heroPositionGuard: false
     property int __previousGridRow: -1
     property int __previousGridColumn: -1
-
+property var __battleGridWrapper
+property bool __battleGridSignalRegistered: false
     signal blockDestroyed(var itemName)
     signal modifiedBlockGridCell()
     signal blockKilled()

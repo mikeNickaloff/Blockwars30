@@ -3,15 +3,17 @@
 #include <QFile>
 #include <QHash>
 #include <QByteArray>
-#include <QDebug>
+#include <QtDebug>
+#include <QRandomGenerator>
+#include <QQuickItem>
 
-
-Pool::Pool(QObject *parent)
-    : QObject{parent}
+Pool::Pool(QQuickItem *parent)
+    : QQuickItem{parent}
 {
 
 
     loadNumbers();
+    currentIndex = 0;
 }
 
 void Pool::loadNumbers() {
@@ -22,11 +24,11 @@ void Pool::loadNumbers() {
         colors << byteArray.split("");
         file.close();
 
-        for (int i = 0; i < colors.size(); ++i) {
+        for (int i = 0; i < colors.count(); ++i) {
             int number = colors.at(i).toInt();
             if (number < 4)  {
                 m_numbers[i] = number;
-                //   qDebug() << "Pool Color:" << i <<  m_numbers.value(i);
+            //       qDebug() << "Pool Color:" << i <<  m_numbers.value(i);
             }
         }
     } else {
@@ -34,28 +36,35 @@ void Pool::loadNumbers() {
     }
 }
 
-int Pool::randomNumber(int current_index, int queueNum)
+int Pool::randomNumber()
 {
 
-    if (current_index != -1) {
-        this->m_poolQueueIndexes[queueNum]  = current_index;
-    }
+    int current_index = getCurrentIndex();
+
     if (m_numbers.keys().contains(current_index + 1)) {
-        this->m_poolQueueIndexes[queueNum]  = current_index + 1;
+        setCurrentIndex(current_index + 1);
     } else {
-        this->m_poolQueueIndexes[queueNum]  = 0;
+        setCurrentIndex(0);
     }
-    return m_numbers.value(m_poolQueueIndexes.value(queueNum, 0), 0);
+    return m_numbers.value(getCurrentIndex(), 0);
 }
 
-QString Pool::nextColor(int current_index, int queueNum)
+QString Pool::nextColor()
 {
     QStringList colors;
     colors << "red" << "blue" << "yellow" << "green";
-    int randomNum = randomNumber(current_index, queueNum);
+    int randomNum;
+    int current_index = getCurrentIndex();
+
+    randomNum = randomNumber();
+
     if ((randomNum >= 0) && (randomNum < colors.length())) {
         return colors.at(randomNum);
     } else {
         return "black";
     }
 }
+
+
+
+
