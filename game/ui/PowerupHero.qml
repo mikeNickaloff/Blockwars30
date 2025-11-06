@@ -15,6 +15,7 @@ Item {
     property var cardData: null
     property var anchoredRow
     property var anchoredColumn
+    property string heroState: "idle"
 
     readonly property var colorPalette: ({
                                            blue: "#448aff",
@@ -26,6 +27,13 @@ Item {
 
     readonly property real spanWidth: Math.max(1, powerupHeroColSpan) * cellWidth + Math.max(0, powerupHeroColSpan - 1) * cellSpacing
     readonly property real spanHeight: Math.max(1, powerupHeroRowSpan) * cellHeight + Math.max(0, powerupHeroRowSpan - 1) * cellSpacing
+    readonly property color heroFillColor: {
+        if (heroState === "explode" || heroState === "destroyed")
+            return Qt.rgba(0.45, 0.12, 0.12, previewMode ? 0.6 : 0.9)
+        if (heroState === "gain")
+            return Qt.rgba(0.16, 0.24, 0.32, previewMode ? 0.65 : 0.92)
+        return previewMode ? Qt.rgba(0.12, 0.16, 0.24, 0.6) : Qt.rgba(0.1, 0.12, 0.18, 0.85)
+    }
 
     width: spanWidth
     height: spanHeight
@@ -55,7 +63,7 @@ Item {
         radius: height / 2
         opacity: previewMode ? 0 : 0.75
         color: Qt.rgba(0.05, 0.08, 0.12, 0.85)
-        visible: cardData && !previewMode
+        visible: cardData && !previewMode && heroState !== "destroyed"
         z: 5
 
         Rectangle {
@@ -75,7 +83,7 @@ Item {
         id: heroBody
         anchors.fill: parent
         radius: Math.min(width, height) * 0.15
-        color: previewMode ? Qt.rgba(0.12, 0.16, 0.24, 0.6) : Qt.rgba(0.1, 0.12, 0.18, 0.85)
+        color: hero.heroFillColor
         border.color: hero.heroColor()
         border.width: Math.max(2, Math.min(width, height) * 0.05)
         antialiasing: true

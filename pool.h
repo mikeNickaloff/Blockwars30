@@ -13,8 +13,9 @@ public:
     void loadNumbers();
     QHash<int, int> m_numbers;
     int pool_index;
-   Q_INVOKABLE int randomNumber(int current_index = -1);
-    Q_INVOKABLE QString nextColor(int current_index = -1);
+   Q_INVOKABLE int randomNumber(int current_index = -1, int queueNum = 0);
+    Q_INVOKABLE QString nextColor(int current_index = -1, int queueNum = 0);
+   QHash<int, int> m_poolQueueIndexes;
 signals:
 
 };

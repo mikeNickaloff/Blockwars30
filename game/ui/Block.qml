@@ -20,11 +20,15 @@ Item {
     property var blockState: "init"
     property var battleGrid
     property var health: 5
-
+    property var cachedHealth: 5
+    property int energyAmount: 0
 
     property Component launchComponent: blockLaunchComponent
     property Component idleComponent: blockIdleComponent
     property Component explodeComponent: blockExplodeComponent
+    property Component gainComponent: blockGainComponent
+    property Component gainCooldownComponent: blockGainCooldownComponent
+    property var heroBindingKey
     property var lowerBlockRefs: []
 
     signal blockDestroyed(var itemName)
@@ -37,6 +41,16 @@ Item {
     }
     onColumnChanged: {
         modifiedBlockGridCell()
+    }
+    onHealthChanged: {
+        if (health > cachedHealth) {
+            if (blockRoot.blockState === "idle") {
+                blockRoot.blockState = "gain"
+                cachedHealth = health
+            } else {
+                cachedHealth = health
+            }
+        }
     }
 
     Component.onCompleted: {
@@ -63,6 +77,13 @@ Item {
         }
         if (blockState == "idle") {
             blockLoader.sourceComponent = idleComponent;
+            energyAmount = 0;
+        }
+        if (blockState == "gain") {
+            blockLoader.sourceComponent = gainComponent;
+        }
+        if (blockState == "gainCooldown") {
+            blockLoader.sourceComponent = gainCooldownComponent;
         }
     }
     Timer {
@@ -102,6 +123,42 @@ Item {
             loops: 1
             onAnimationEndCallback: function(itemName) {
                 blockRoot.blockState = "explode"
+            }
+        }
+    }
+
+    Component {
+        id: blockGainComponent
+        Engine.GameSpriteSheetItem {
+            spriteSheetFile: blockLaunchSpriteSheet()
+            gameScene: blockRoot.gameScene
+            itemName: blockRoot.itemName
+            frameWidth: 64
+            frameHeight: 64
+            frameCount: 3
+            frameDuration: 125
+            loops: 1
+            reverse: false
+            onAnimationEndCallback: function(itemName) {
+                blockRoot.blockState = "gainCooldown"
+            }
+        }
+    }
+
+    Component {
+        id: blockGainCooldownComponent
+        Engine.GameSpriteSheetItem {
+            spriteSheetFile: blockLaunchSpriteSheet()
+            gameScene: blockRoot.gameScene
+            itemName: blockRoot.itemName
+            frameWidth: 64
+            frameHeight: 64
+            frameCount: 3
+            frameDuration: 125
+            loops: 1
+            reverse: true
+            onAnimationEndCallback: function(itemName) {
+                blockRoot.blockState = "idle"
             }
         }
     }
@@ -179,7 +236,14 @@ Item {
             triggeredOnStart: false
             onTriggered: {
                 blockRoot.blockState = "destroyed"
-                //blockRoot.blockDestroyed()
+                blockRoot.blockDestroyed({
+                                             itemName: blockRoot.itemName,
+                                             blockColor: blockRoot.blockColor,
+                                             energyAmount: blockRoot.energyAmount,
+                                             row: blockRoot.row,
+                                             column: blockRoot.column,
+                                             battleGrid: blockRoot.battleGrid
+                                         })
             }
         }
         Engine.GameDropItem {

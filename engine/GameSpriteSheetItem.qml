@@ -8,6 +8,7 @@ GameDynamicItem {
     property alias frameDuration: spriteRoot.frameDuration
     property alias frameWidth: spriteRoot.frameWidth
     property alias frameHeight: spriteRoot.frameHeight
+    property alias reverse: spriteRoot.reverse
     signal animationEndCallback(var itemName)
     signal animationBeginCallback(var itemName)
 

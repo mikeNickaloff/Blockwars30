@@ -34,24 +34,25 @@ void Pool::loadNumbers() {
     }
 }
 
-int Pool::randomNumber(int current_index)
+int Pool::randomNumber(int current_index, int queueNum)
 {
+
     if (current_index != -1) {
-        this->pool_index = current_index;
+        this->m_poolQueueIndexes[queueNum]  = current_index;
     }
-    if (m_numbers.keys().contains(this->pool_index + 1)) {
-        pool_index++;
+    if (m_numbers.keys().contains(current_index + 1)) {
+        this->m_poolQueueIndexes[queueNum]  = current_index + 1;
     } else {
-        pool_index = 0;
+        this->m_poolQueueIndexes[queueNum]  = 0;
     }
-    return m_numbers.value(pool_index);
+    return m_numbers.value(m_poolQueueIndexes.value(queueNum, 0), 0);
 }
 
-QString Pool::nextColor(int current_index)
+QString Pool::nextColor(int current_index, int queueNum)
 {
     QStringList colors;
     colors << "red" << "blue" << "yellow" << "green";
-    int randomNum = randomNumber(current_index);
+    int randomNum = randomNumber(current_index, queueNum);
     if ((randomNum >= 0) && (randomNum < colors.length())) {
         return colors.at(randomNum);
     } else {

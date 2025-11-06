@@ -235,6 +235,7 @@ Item {
         cardData.activationReadyChanged.connect(function() { updateDragEnabled(slot) })
         cardData.energyChanged.connect(function() { cardEnergyChanged(cardData) })
         cardData.heroPlacedChanged.connect(function() { updateDragEnabled(slot) })
+        cardData.heroDefeatedChanged.connect(function() { updateDragEnabled(slot) })
         cardData.heroCurrentHealthChanged.connect(function() {
             if (!cardData.heroAlive)
                 updateDragEnabled(slot)
@@ -253,7 +254,7 @@ Item {
     function updateDragEnabled(slot) {
         if (!slot || !slot.dragItem || !slot.cardData)
             return
-        var enabled = slot.cardData.activationReady && !slot.cardData.dragLocked && !slot.cardData.heroPlaced
+        var enabled = slot.cardData.activationReady && !slot.cardData.dragLocked && !slot.cardData.heroPlaced && !slot.cardData.heroDefeated
         slot.dragItem.enabled = enabled
     }
 
@@ -346,6 +347,8 @@ Item {
             var slot = sidebarCards[i]
             if (!slot.cardData)
                 continue
+            if (slot.cardData.heroDefeated)
+                continue
             if (slot.cardData.heroPlaced && !slot.cardData.heroAlive)
                 continue
             var cardColor = (slot.cardData.powerupCardColor || "").toLowerCase()
@@ -355,7 +358,6 @@ Item {
             updateDragEnabled(slot)
         }
     }
-}
     function requestHeroActivation(slot) {
         if (!slot || !slot.cardData)
             return
@@ -367,3 +369,4 @@ Item {
             return
         powerupActivationRequested(slot.cardData)
     }
+}

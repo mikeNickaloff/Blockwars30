@@ -81,13 +81,13 @@ QtObject {
         var specMultiplier = 1
         if (powerupTargetSpec === targetSpecs.Blocks) {
             var blocks = Math.max(1, targetBlockCount())
-            specMultiplier = blocks
+            specMultiplier = blocks * 0.5
         } else if (powerupTargetSpec === targetSpecs.PlayerPowerupInGameCards) {
-            specMultiplier = 1.5
+            specMultiplier = 8
         }
 
-        var operationMultiplier = powerupOperation === operations.Decrease ? 2 : 1
-        var targetMultiplier = powerupTarget === targets.Enemy ? 1.5 : 1
+        var operationMultiplier = powerupOperation === operations.Decrease ? 0.5 : 0.5
+        var targetMultiplier = powerupTarget === targets.Enemy ? 0.5 : 0.5
         var healthBonus = Math.max(0, powerupCardHealth)
 
         var energy = (base + healthBonus * 0.5) * specMultiplier * operationMultiplier * targetMultiplier

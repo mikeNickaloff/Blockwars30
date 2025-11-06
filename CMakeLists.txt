@@ -64,6 +64,8 @@ QML_FILES game/ui/ExplodeEffect.qml
 RESOURCES game/shaders/explode.frag
 RESOURCES game/shaders/explode.vert
 QML_FILES game/ui/GridShakeEffector.qml
+QML_FILES game/ui/BattleGridHealthBar.qml
+QML_FILES
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.

@@ -53,6 +53,7 @@ INSERT INTO files VALUES(45,'pool.cpp','Implementation backing Pool that reads r
 INSERT INTO files VALUES(46,'pool.h','QObject-derived pool that serves deterministic random numbers and color names to QML consumers.');
 INSERT INTO files VALUES(47,'WHEEL.db','SQLite metadata store defined in AGENTS.md for file/function and change tracking.');
 INSERT INTO files VALUES(48,'game/ui/GridShakeEffector.qml','Battle grid shake effector component animating translate offsets');
+INSERT INTO files VALUES(49,'game/ui/BattleGridHealthBar.qml','Displays a health progress bar synced to a battle grid''s main health.');
 CREATE TABLE defs (
   id INTEGER PRIMARY KEY,
   file_id INTEGER NOT NULL,
@@ -68,7 +69,7 @@ INSERT INTO defs VALUES(3,1,'function','receiveLocalBlockLaunchPayload(payload)'
 INSERT INTO defs VALUES(4,1,'function','calculateLaunchDamage(payload)','payload','Resolves incoming launch damage for a column, routing hits through hero bindings, triggering shake feedback, and returning breach metadata.');
 INSERT INTO defs VALUES(5,1,'function','launchMatchedBlocks()','','Transitions matched blocks into launch state and emits launch events for each.');
 INSERT INTO defs VALUES(6,1,'property','property string uuid','','Unique identifier assigned to each battle grid instance for payload attribution.');
-INSERT INTO defs VALUES(7,1,'property','property int mainHealth','','Tracks the player''s primary health pool to receive direct launch damage overflow.');
+INSERT INTO defs VALUES(7,1,'property','property int mainHealth','','Tracks the battle grid''s current health, automatically clamped between zero and mainHealthMax for launch overflow.');
 INSERT INTO defs VALUES(8,3,'function','createBlock(blockComp, dragComp, parent, gameScene, opts)','blockComp, dragComp, parent, gameScene, opts','Constructs a block with paired drag item and registers the pair with the scene.');
 INSERT INTO defs VALUES(9,3,'function','registerBattleGrid(battleGrid)','battleGrid','Attaches battle-grid specific signal wiring such as launch payload relay hooks.');
 INSERT INTO defs VALUES(10,2,'function','receiveBattleGridLaunchPayload(payload)','payload','Routes launch payloads between battle grids and triggers damage calculations.');
@@ -414,8 +415,8 @@ INSERT INTO defs VALUES(349,1,'function','handleStateChange(newState, oldState)'
 INSERT INTO defs VALUES(350,1,'function','isLifecycleQueued(baseState)','baseState','Checks the queue and current item to avoid enqueuing duplicate lifecycles.');
 INSERT INTO defs VALUES(351,1,'function','isPromiseLike(value)','value','Detects whether the lifecycle main returned a promise so the queue can await it.');
 INSERT INTO defs VALUES(352,1,'function','launchMatchedBlocks()','None','Switches matched block entries into launch state and returns the list of launched identifiers.');
-INSERT INTO defs VALUES(353,1,'function','markMatchedBlocks()','None','Scans the grid for horizontal and vertical runs of three or more like-colored blocks, tagging only those as matched and returning their identifiers.');
-INSERT INTO defs VALUES(354,1,'function','moveWrapper(wrapper, targetRow, targetColumn)','wrapper, targetRow, targetColumn','Repositions an existing wrapper to a new grid coordinate and updates the matrix.');
+INSERT INTO defs VALUES(353,1,'function','markMatchedBlocks()','None','Scans the grid for horizontal and vertical runs of three or more like-colored blocks, ignoring hero-occupied cells so only free blocks become matched.');
+INSERT INTO defs VALUES(354,1,'function','moveWrapper(wrapper, targetRow, targetColumn)','wrapper, targetRow, targetColumn','Repositions a wrapper to a new grid coordinate, delegating to attemptHeroShift when the wrapper belongs to a hero footprint.');
 INSERT INTO defs VALUES(355,1,'function','normalizeStateName(value)','value','Normalizes incoming state tokens to lower-case strings for lookup in the triplet list.');
 INSERT INTO defs VALUES(356,1,'function','processNextQueueItem()','None','Executes the next queued lifecycle event, honoring promise results before proceeding.');
 INSERT INTO defs VALUES(357,1,'function','requestState(baseState)','baseState','Public entry point that normalizes a base state and sets currentState so the queue can enqueue the lifecycle.');
@@ -656,6 +657,16 @@ INSERT INTO defs VALUES(591,1,'function','clearHeroPlacementCells(placement)','p
 INSERT INTO defs VALUES(592,2,'function','opposingGrid(grid)','grid:Item','Utility that returns the opposing battle grid for the provided grid reference.');
 INSERT INTO defs VALUES(593,2,'function','adjustGridHealth(targetGrid, amount, operation)','targetGrid:Item, amount:number, operation:string','Applies healing or damage to a battle grid''s health pool in response to powerup effects.');
 INSERT INTO defs VALUES(594,2,'function','triggerPowerupActivation(cardData, options)','cardData:var, options:var','Dispatches a powerup activation using the card''s targeting rules, draining energy unless instructed otherwise.');
+INSERT INTO defs VALUES(595,1,'property','property int mainHealthMax',NULL,'Defines the grid''s maximum health capacity, providing a reference value for UI bars and healing clamping.');
+INSERT INTO defs VALUES(596,49,'property','property Item battleGrid',NULL,'References the battle grid instance that supplies current and maximum health values.');
+INSERT INTO defs VALUES(597,49,'property','readonly property int maxHealth',NULL,'Reflects the battle grid''s maximum health for progress calculations and display.');
+INSERT INTO defs VALUES(599,1,'function','handleBlockDestroyed(event)','event','Pays out stored energy when a block is destroyed, awarding the attacking sidebar directly and clearing any hero-linked reserves.');
+INSERT INTO defs VALUES(600,1,'function','registerBlockEntry(entry)','entry','Registers block entries for destruction and state-change events so hero-linked energy payouts and state sync stay consistent.');
+INSERT INTO defs VALUES(601,1,'function','synchronizeHeroBlockState(entry, newState)','entry, newState','Keeps all blocks bound to a powerup hero in sync by mirroring state transitions and updating the hero avatar state.');
+INSERT INTO defs VALUES(602,1,'function','isHeroOccupiedCell(row, column)','row:int, column:int','Reports whether the specified grid slot is reserved by a powerup hero footprint so compaction and fill routines can skip it.');
+INSERT INTO defs VALUES(603,25,'property','property bool heroDefeated',NULL,'Indicates that the card’s hero has been defeated, disabling future energy gain and redeployment from this slot.');
+INSERT INTO defs VALUES(604,25,'function','markHeroDefeated()',NULL,'Locks the card after the bound hero is eliminated by zeroing energy, marking the slot as spent, and preventing further placement.');
+INSERT INTO defs VALUES(605,11,'property','property string heroState',NULL,'Tracks the current block state for the bound hero so visuals can react alongside linked blocks.');
 CREATE TABLE refs (
   id INTEGER PRIMARY KEY,
   def_id INTEGER NOT NULL,

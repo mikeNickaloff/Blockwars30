@@ -64,6 +64,8 @@ File shortcuts:
 Definition shortcuts:
   defs list [--file=PATH | --file_id=ID]
       List definitions joined to their files, optionally filtered by file.
+  defs search TERM... [--file=PATH]
+      Keyword search (AND) across definition signatures, descriptions, parameters, types, or file paths.
   defs add --file=PATH|--file_id=ID --type=TYPE [--signature=SIG] [--parameters=TEXT] [--description=TEXT]
       Insert a definition for the selected file; non-type fields are optional.
   defs del [--def_id=ID | --def=SIG [--file=PATH|--file_id=ID]]
@@ -1921,6 +1923,74 @@ ORDER BY files.relpath, defs.type, defs.signature;
 EOF
 }
 
+defs_search() {
+  ensure_db
+  local file_filter=""
+  local -a terms=()
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --file=*) file_filter="${1#*=}"; shift;;
+      --file)   file_filter="$2"; shift 2;;
+      --help|-h)
+        fatal "usage: $PROG defs search TERM... [--file=PATH]"
+        ;;
+      --)
+        shift
+        while [[ $# -gt 0 ]]; do
+          terms+=("$1"); shift
+        done
+        break
+        ;;
+      -*)
+        fatal "unknown flag for defs search: $1"
+        ;;
+      *)
+        terms+=("$1"); shift;;
+    esac
+  done
+
+  [[ ${#terms[@]} -gt 0 ]] || fatal "defs search requires at least one term"
+
+  local -a where_clauses=("1=1")
+  if [[ -n "$file_filter" ]]; then
+    local file_like
+    file_like="$(sql_quote "$(wrap_like "$file_filter")")"
+    where_clauses+=("LOWER(files.relpath) LIKE LOWER($file_like)")
+  fi
+
+  for term in "${terms[@]}"; do
+    local like_expr
+    like_expr="$(sql_quote "$(wrap_like "$term")")"
+    local clause="(LOWER(files.relpath) LIKE LOWER($like_expr)"
+    clause+=" OR LOWER(COALESCE(defs.signature,'')) LIKE LOWER($like_expr)"
+    clause+=" OR LOWER(COALESCE(defs.description,'')) LIKE LOWER($like_expr)"
+    clause+=" OR LOWER(COALESCE(defs.parameters,'')) LIKE LOWER($like_expr)"
+    clause+=" OR LOWER(COALESCE(defs.type,'')) LIKE LOWER($like_expr))"
+    where_clauses+=("$clause")
+  done
+
+  local where_sql
+  where_sql="$(join_with ' AND ' "${where_clauses[@]}")"
+
+  sqlite3 "$DB_PATH" <<EOF
+.timer off
+.headers on
+.mode column
+SELECT
+  defs.id,
+  files.relpath,
+  defs.type,
+  COALESCE(defs.signature, '')   AS signature,
+  COALESCE(defs.parameters, '')  AS parameters,
+  COALESCE(defs.description, '') AS description
+FROM defs
+JOIN files ON files.id = defs.file_id
+WHERE $where_sql
+ORDER BY files.relpath, defs.type, defs.signature;
+EOF
+}
+
 defs_add() {
   ensure_db
   local file_id=""
@@ -2144,13 +2214,14 @@ command_defs() {
   local subcommand="$1"; shift
   case "$subcommand" in
     list)   defs_list "$@";;
+    search) defs_search "$@";;
     add)    defs_add "$@";;
     del|delete|rm)
       defs_del "$@"
       ;;
     update) defs_update "$@";;
     --help|-h)
-      fatal "defs subcommands: list, add, del, update"
+      fatal "defs subcommands: list, search, add, del, update"
       ;;
     *)
       fatal "unknown defs subcommand: $subcommand"

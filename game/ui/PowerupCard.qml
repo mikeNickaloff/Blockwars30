@@ -22,8 +22,8 @@ Item {
     readonly property real cardMinDim: Math.min(cardWidth, cardHeight)
     readonly property real cardMargin: cardHeight * 0.08
     readonly property real sectionSpacing: cardHeight * 0.08
-    readonly property real iconHeight: cardHeight * 0.25
-    readonly property real energyFont: Math.min(8, cardHeight * 0.22)
+    readonly property real iconHeight: cardHeight * 0.45
+    readonly property real energyFont: Math.min(8, cardHeight * 0.42)
 
     property alias powerupData: powerup
     property alias powerupUuid: powerup.powerupUuid
@@ -155,9 +155,9 @@ Item {
         id: energyFill
         anchors.left: cardFace.left
         anchors.bottom: cardFace.bottom
-        height: Math.max(2, cardHeight * 0.035)
+        height: Math.max(2, cardHeight * 0.085)
         width: cardFace.width * runtimeEnergyProgress
-        radius: height / 2
+        radius: height * 0.6
         color: cardColorHex()
         opacity: 0.95
     }
@@ -220,8 +220,8 @@ Item {
             anchors.top: parent.top
             readonly property real iconDim: Math.min(parent.width, parent.height) * 0.25
             width: iconDim
-            height: iconDim * 1.3
-            radius: iconDim * 0.18
+            height: iconDim * 1.5
+            radius: iconDim * 0.3
             color: "#101622"
             border.width: Math.max(1, iconDim * 0.1)
             border.color: cardColorHex()

@@ -162,7 +162,7 @@ Item {
         case "match":
             markMatchedBlocks();
             matchStateCheckTimer.start();
-            Qt.callLater(function() { evaluateMatchState(); });
+          //  Qt.callLater(function() { evaluateMatchState(); });
             break;
         case "launch":
             prepareLaunchSequence();
@@ -203,6 +203,100 @@ Item {
         };
     }
 
+    function handleBlockDestroyed(event) {
+        var payload = (event && typeof event === "object") ? event : { itemName: event };
+        if (!payload || !payload.itemName)
+            return;
+
+        var wrapper = findWrapperByItemName(payload.itemName);
+        if (!wrapper || !wrapper.entry)
+            return;
+
+        var entry = wrapper.entry;
+        var reward = payload.energyAmount !== undefined && payload.energyAmount !== null
+                ? payload.energyAmount
+                : (entry.energyAmount !== undefined ? entry.energyAmount : 0);
+        if (!reward || reward <= 0)
+            return;
+
+        var scene = gameScene;
+        if (!scene) {
+            entry.energyAmount = 0;
+            return;
+        }
+
+        var offenseGrid = scene.getBattleGridOffense ? scene.getBattleGridOffense() : null;
+        if (!offenseGrid) {
+            entry.energyAmount = 0;
+            return;
+        }
+
+        var sidebar = scene.sidebarForGrid ? scene.sidebarForGrid(offenseGrid) : null;
+        if (!sidebar || typeof sidebar.distributeEnergy !== "function") {
+            entry.energyAmount = 0;
+            return;
+        }
+
+        var color = entry.blockColor || payload.blockColor || "";
+        if (color)
+            sidebar.distributeEnergy(color, reward);
+
+        var placement = entry.heroBindingKey ? heroPlacementForKey(entry.heroBindingKey) : null;
+        if (placement && placement.boundBlocks) {
+            for (var i = 0; i < placement.boundBlocks.length; ++i) {
+                var record = placement.boundBlocks[i];
+                if (!record || !record.wrapper || !record.wrapper.entry)
+                    continue;
+                record.wrapper.entry.energyAmount = 0;
+            }
+            if (placement.heroItem)
+                placement.heroItem.heroState = "destroyed";
+        }
+        entry.energyAmount = 0;
+    }
+
+    function registerBlockEntry(entry) {
+        if (!entry || entry.__battleGridSignalRegistered)
+            return;
+        var hasDestroyedSignal = entry.blockDestroyed && typeof entry.blockDestroyed.connect === "function";
+        var hasStateSignal = entry.blockStateChanged && typeof entry.blockStateChanged.connect === "function";
+        if (!hasDestroyedSignal && !hasStateSignal)
+            return;
+        entry.__battleGridSignalRegistered = true;
+        if (hasDestroyedSignal)
+            entry.blockDestroyed.connect(handleBlockDestroyed);
+        if (hasStateSignal) {
+            entry.blockStateChanged.connect(function(newState) {
+                synchronizeHeroBlockState(entry, newState);
+            });
+        }
+    }
+
+    function synchronizeHeroBlockState(entry, newState) {
+        if (!entry || !entry.heroBindingKey)
+            return;
+        var placement = heroPlacementForKey(entry.heroBindingKey);
+        if (!placement || placement.__stateSync)
+            return;
+        placement.__stateSync = true;
+        var normalizedState = normalizeStateName(newState);
+        var records = placement.boundBlocks || [];
+        for (var i = 0; i < records.length; ++i) {
+            var record = records[i];
+            if (!record || !record.wrapper || !record.wrapper.entry)
+                continue;
+            var linkedEntry = record.wrapper.entry;
+            if (linkedEntry === entry)
+                continue;
+            var currentState = normalizeStateName(linkedEntry.blockState);
+            if (currentState !== normalizedState)
+                linkedEntry.blockState = newState;
+        }
+        if (placement.heroItem)
+            placement.heroItem.heroState = newState;
+        placement.__stateSync = false;
+    }
+
     function setWrapperAt(row, column, wrapper) {
         ensureMatrix();
         if (row < 0 || row >= gridRows || column < 0 || column >= gridCols)
@@ -219,6 +313,7 @@ Item {
             wrapper.entry.column = column;
             if (!wrapper.entry.blockState)
                 wrapper.entry.blockState = "idle";
+            registerBlockEntry(wrapper);
         }
 
         wrapper.width = cellW;
@@ -345,6 +440,10 @@ Item {
         return heroPlacementForKey(key);
     }
 
+    function isHeroOccupiedCell(row, column) {
+        return heroKeyAt(row, column) !== null;
+    }
+
     function clearHeroPlacementCells(placement) {
         if (!placement || !placement.boundBlocks)
             return;
@@ -362,6 +461,9 @@ Item {
             if (wrap.entry)
                 wrap.entry.heroBindingKey = null;
         }
+        if (placement.heroItem)
+            placement.heroItem.heroState = "idle";
+        placement.__stateSync = false;
     }
 
     function bindHeroPlacement(placement) {
@@ -387,6 +489,7 @@ Item {
         if (placement.heroItem) {
             placement.heroItem.anchoredRow = placement.row;
             placement.heroItem.anchoredColumn = placement.column;
+            placement.heroItem.heroState = "idle";
         }
     }
 
@@ -407,16 +510,19 @@ Item {
             return;
         var key = placement.key;
         var cardData = placement.cardData || null;
+        var previousHealth = cardData ? Math.max(0, cardData.heroCurrentHealth) : 0;
         if (placement.boundBlocks) {
             for (var i = 0; i < placement.boundBlocks.length; ++i) {
                 var record = placement.boundBlocks[i];
                 if (!record || !record.wrapper || !record.wrapper.entry)
                     continue;
                 record.wrapper.entry.health = 0;
+                record.wrapper.entry.energyAmount = Math.max(record.wrapper.entry.energyAmount || 0, previousHealth);
                 record.wrapper.entry.blockState = "waitAndExplode";
             }
         }
         if (placement.heroItem && typeof placement.heroItem.destroy === "function") {
+            placement.heroItem.heroState = "destroyed";
             placement.heroItem.visible = false;
             placement.heroItem.destroy();
             placement.heroItem = null;
@@ -426,7 +532,10 @@ Item {
         releaseHeroPlacement(cardUuid, { preserveCardState: true });
         if (cardData) {
             cardData.heroCurrentHealth = 0;
-            cardData.resetAfterHeroRemoval();
+            if (typeof cardData.markHeroDefeated === "function")
+                cardData.markHeroDefeated();
+            else
+                cardData.resetAfterHeroRemoval();
         }
     }
 
@@ -484,11 +593,13 @@ Item {
             return { affected: true, destroyed: false, hero: false, health: entry.health };
         }
 
+        var previousHealth = entry.health;
         entry.health = entry.health - delta;
         if (entry.health <= 0) {
             entry.health = 0;
+            entry.energyAmount = Math.max(entry.energyAmount || 0, previousHealth);
             entry.blockState = "waitAndExplode";
-            return { affected: true, destroyed: true, hero: false, health: 0 };
+            return { affected: true, destroyed: true, hero: false, health: 0, energyAmount: entry.energyAmount };
         }
         return { affected: true, destroyed: false, hero: false, health: entry.health };
     }
@@ -699,7 +810,8 @@ Item {
             rowSpan: rowSpan,
             colSpan: colSpan,
             metadata: meta,
-            boundBlocks: []
+            boundBlocks: [],
+            __stateSync: false
         };
         heroPlacements[key] = placement;
         if (cardData) {
@@ -815,13 +927,19 @@ Item {
 
     function moveWrapper(wrapper, targetRow, targetColumn) {
         if (!wrapper)
-            return;
+            return false;
+
+        if (heroPlacementForWrapper(wrapper))
+            return false;
 
         const currentPos = findWrapperPosition(wrapper);
+        if (currentPos.row === targetRow && currentPos.column === targetColumn)
+            return true;
         if (currentPos.row >= 0 && currentPos.column >= 0)
             clearWrapperAt(currentPos.row, currentPos.column);
 
         setWrapperAt(targetRow, targetColumn, wrapper);
+        return true;
     }
 
     function findWrapperPosition(wrapper) {
@@ -849,6 +967,8 @@ Item {
 
         for (var row = rowStart; row !== rowEnd; row += rowStep) {
             for (var column = 0; column < gridCols; ++column) {
+                if (isHeroOccupiedCell(row, column))
+                    continue;
                 if (getBlockWrapper(row, column))
                     continue;
 
@@ -893,40 +1013,61 @@ Item {
         purgeDestroyedBlocks();
         const gravityDown = normalizeStateName(launchDirection) === "up";
         for (var column = 0; column < gridCols; ++column) {
-            var survivors = [];
             if (gravityDown) {
-                for (var row = 0; row < gridRows; ++row) {
-                    const wrapperDown = getBlockWrapper(row, column);
-                    if (wrapperDown)
-                        survivors.push(wrapperDown);
+                var survivorsDown = [];
+                for (var rowDown = 0; rowDown < gridRows; ++rowDown) {
+                    if (isHeroOccupiedCell(rowDown, column))
+                        continue;
+                    const wrapperDown = getBlockWrapper(rowDown, column);
+                    if (wrapperDown && !heroPlacementForWrapper(wrapperDown))
+                        survivorsDown.push(wrapperDown);
                 }
 
-                var targetRowDown = 0;
-                for (var idxDown = 0; idxDown < survivors.length; ++idxDown) {
-                    moveWrapper(survivors[idxDown], targetRowDown, column);
-                    targetRowDown += 1;
+                var availableRowsDown = [];
+                for (var fillRowDown = 0; fillRowDown < gridRows; ++fillRowDown) {
+                    if (!isHeroOccupiedCell(fillRowDown, column))
+                        availableRowsDown.push(fillRowDown);
                 }
 
-                while (targetRowDown < gridRows) {
-                    clearWrapperAt(targetRowDown, column);
-                    targetRowDown += 1;
+                var survivorIdxDown = 0;
+                for (var ar = 0; ar < availableRowsDown.length; ++ar) {
+                    var targetRowDown = availableRowsDown[ar];
+                    if (survivorIdxDown < survivorsDown.length) {
+                        var movingWrapperDown = survivorsDown[survivorIdxDown++];
+                        var currentPosDown = findWrapperPosition(movingWrapperDown);
+                        if (currentPosDown.row !== targetRowDown)
+                            moveWrapper(movingWrapperDown, targetRowDown, column);
+                    } else {
+                        clearWrapperAt(targetRowDown, column);
+                    }
                 }
             } else {
+                var survivorsUp = [];
                 for (var rowUp = gridRows - 1; rowUp >= 0; --rowUp) {
+                    if (isHeroOccupiedCell(rowUp, column))
+                        continue;
                     const wrapperUp = getBlockWrapper(rowUp, column);
-                    if (wrapperUp)
-                        survivors.push(wrapperUp);
+                    if (wrapperUp && !heroPlacementForWrapper(wrapperUp))
+                        survivorsUp.push(wrapperUp);
                 }
 
-                var targetRowUp = gridRows - 1;
-                for (var idxUp = 0; idxUp < survivors.length; ++idxUp) {
-                    moveWrapper(survivors[idxUp], targetRowUp, column);
-                    targetRowUp -= 1;
+                var availableRowsUp = [];
+                for (var fillRowUp = gridRows - 1; fillRowUp >= 0; --fillRowUp) {
+                    if (!isHeroOccupiedCell(fillRowUp, column))
+                        availableRowsUp.push(fillRowUp);
                 }
 
-                while (targetRowUp >= 0) {
-                    clearWrapperAt(targetRowUp, column);
-                    targetRowUp -= 1;
+                var survivorIdxUp = 0;
+                for (var aru = 0; aru < availableRowsUp.length; ++aru) {
+                    var targetRowUp = availableRowsUp[aru];
+                    if (survivorIdxUp < survivorsUp.length) {
+                        var movingWrapperUp = survivorsUp[survivorIdxUp++];
+                        var currentPosUp = findWrapperPosition(movingWrapperUp);
+                        if (currentPosUp.row !== targetRowUp)
+                            moveWrapper(movingWrapperUp, targetRowUp, column);
+                    } else {
+                        clearWrapperAt(targetRowUp, column);
+                    }
                 }
             }
         }
@@ -1174,6 +1315,7 @@ Item {
         entry.blockState = "launch";
         if (entry.health === undefined || entry.health === null)
             entry.health = 5;
+        entry.energyAmount = Math.max(entry.energyAmount || 0, entry.health || 0);
 
         var globalPoint = { x: 0, y: 0 };
         if (wrapper && typeof wrapper.mapToGlobal === "function")
@@ -1331,6 +1473,7 @@ Item {
             const targetHealth = entry.health;
             if (remaining >= targetHealth) {
                 remaining -= targetHealth;
+                entry.energyAmount = Math.max(entry.energyAmount || 0, targetHealth);
                 entry.health = 0;
                 entry.blockState = "waitAndExplode";
                 damagedBlocks.push({

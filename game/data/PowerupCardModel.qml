@@ -21,6 +21,7 @@ Data.PowerupItem {
                                                 ? Math.max(0, Math.min(heroCurrentHealth, heroMaxHealth)) / heroMaxHealth
                                                 : 0
     readonly property bool heroAlive: heroCurrentHealth > 0
+    property bool heroDefeated: false
 
     signal energyChanged(int currentEnergy)
 
@@ -67,7 +68,7 @@ Data.PowerupItem {
 
     function applyHeroHealing(amount) {
         var heal = Math.max(0, Math.floor(amount))
-        if (heal <= 0)
+        if (heroDefeated || heal <= 0)
             return heroCurrentHealth
         heroCurrentHealth = Math.min(heroMaxHealth, heroCurrentHealth + heal)
         return heroCurrentHealth
@@ -96,23 +97,45 @@ Data.PowerupItem {
         heroCurrentHealth = 0
         ensureHeroWithinBounds()
         battleGrid = null
+        heroDefeated = false
+    }
+
+    function markHeroDefeated() {
+        heroPlaced = false
+        heroInstance = null
+        dragLocked = true
+        currentEnergy = 0
+        activationReady = false
+        heroCurrentHealth = 0
+        heroDefeated = true
+        battleGrid = null
+        ensureHeroWithinBounds()
+        ensureEnergyWithinBounds()
     }
 
     function markHeroPlacedState(alive) {
         heroPlaced = !!alive
         dragLocked = !!alive
         if (alive)
+            heroDefeated = false
+        if (alive)
             resetHeroVitals()
     }
 
     function updateActivationState() {
         var required = Math.max(0, powerupCardEnergyRequired)
+        if (heroDefeated) {
+            activationReady = false
+            return
+        }
         var ready = required === 0 ? true : currentEnergy >= required
         activationReady = ready
     }
 
     function gainEnergy(amount) {
         if (!amount || amount <= 0)
+            return
+        if (heroDefeated)
             return
         currentEnergy = currentEnergy + Math.floor(amount)
         ensureEnergyWithinBounds()
@@ -123,6 +146,7 @@ Data.PowerupItem {
         heroPlaced = false
         dragLocked = false
         heroInstance = null
+        heroDefeated = false
         ensureEnergyWithinBounds()
     }
 

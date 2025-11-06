@@ -79,7 +79,7 @@ function createBlock(blockComp, dragComp, parent, gameScene, opts) {
                                                                      z: z
                                                                  }, opts.dragProps || {}));
 
-    block.blockDestroyed.connect(dragItem.destroy)
+    block.blockDestroyed.connect(dragItem.entryDestroyed)
 
     if (!dragItem) {
         block.destroy();

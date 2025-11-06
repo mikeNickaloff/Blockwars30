@@ -380,6 +380,7 @@ Engine.GameScene {
 
                     Label { text: qsTr("UUID") }
                     TextField {
+                        Layout.preferredWidth: 350
                         text: editingPowerup.powerupUuid
                         readOnly: true
                         selectByMouse: true
@@ -387,6 +388,7 @@ Engine.GameScene {
 
                     Label { text: qsTr("Name") }
                     TextField {
+                        Layout.preferredWidth: 350
                         text: editingPowerup.powerupName
                         placeholderText: qsTr("Enter powerup name")
                         onTextChanged: editingPowerup.powerupName = text
@@ -395,6 +397,7 @@ Engine.GameScene {
                     Label { text: qsTr("Card Color") }
                     ComboBox {
                         model: cardColorOptions
+                        Layout.preferredWidth: 350
                         textRole: "label"
                         valueRole: "value"
                         currentIndex: indexForValue(cardColorOptions, editingPowerup.powerupCardColor)
@@ -404,7 +407,7 @@ Engine.GameScene {
                         }
                     }
 
-                    Label { text: qsTr("Hero Rows") }
+                    Label { text: qsTr("Hero Size in Rows") }
                     SpinBox {
                         from: 1
                         to: 6
@@ -412,7 +415,7 @@ Engine.GameScene {
                         onValueChanged: editingPowerup.powerupHeroRowSpan = Math.max(1, Math.min(6, value))
                     }
 
-                    Label { text: qsTr("Hero Columns") }
+                    Label { text: qsTr("Hero Size in Columns") }
                     SpinBox {
                         from: 1
                         to: 6
@@ -434,6 +437,7 @@ Engine.GameScene {
 
                     Label { text: qsTr("Target Spec") }
                     ComboBox {
+                        Layout.preferredWidth: 350
                         model: targetSpecOptions
                         textRole: "label"
                         valueRole: "value"
@@ -449,6 +453,7 @@ Engine.GameScene {
                         model: operationOptions
                         textRole: "label"
                         valueRole: "value"
+                        Layout.preferredWidth: 350
                         currentIndex: indexForValue(operationOptions, editingPowerup.powerupOperation)
                         enabled: editingPowerup.powerupTarget === editingPowerup.targets.Enemy
                         onCurrentIndexChanged: {
@@ -515,7 +520,7 @@ Engine.GameScene {
                         model: cardColorOptions
                         textRole: "label"
                         valueRole: "value"
-                        Layout.preferredWidth: 200
+                        Layout.preferredWidth: 350
                         currentIndex: indexForValue(cardColorOptions, typeof editingPowerup.powerupTargetSpecData === "string" ? editingPowerup.powerupTargetSpecData : "blue")
                         onCurrentIndexChanged: {
                             if (currentIndex >= 0 && currentIndex < cardColorOptions.length)
