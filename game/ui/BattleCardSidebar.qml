@@ -211,6 +211,11 @@ Item {
             dragItem.entry.Layout.fillWidth = true
             dragItem.entry.width = slotWidth
             dragItem.entry.height = slotHeight
+            if (dragItem.entry.activated) {
+                dragItem.entry.activated.connect(function() {
+                    requestHeroActivation(slot)
+                })
+            }
         }
 
         var hero = creation.heroEntry || null
@@ -249,13 +254,18 @@ Item {
                 slot.hero.destroy()
             slot.hero = null
         })
+        updateDragEnabled(slot)
     }
 
     function updateDragEnabled(slot) {
         if (!slot || !slot.dragItem || !slot.cardData)
             return
-        var enabled = slot.cardData.activationReady && !slot.cardData.dragLocked && !slot.cardData.heroPlaced && !slot.cardData.heroDefeated
-        slot.dragItem.enabled = enabled
+        var cardData = slot.cardData
+        var heroReady = cardData.heroPlaced && cardData.heroAlive && cardData.activationReady
+        var allowDrag = cardData.activationReady && !cardData.dragLocked && !cardData.heroPlaced && !cardData.heroDefeated
+        slot.dragItem.enabled = allowDrag || heroReady
+        if (slot.dragItem.entry && slot.dragItem.entry.interactive !== undefined)
+            slot.dragItem.entry.interactive = heroReady && !allowDrag
     }
 
     function snapCardHome(slot) {

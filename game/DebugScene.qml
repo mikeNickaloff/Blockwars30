@@ -38,7 +38,7 @@ Engine.GameScene {
     function receiveBattleGridLaunchPayload(payload) {
         if (!payload || !payload.battleGrid)
             return;
-        console.log("received launch payload", JSON.stringify(payload))
+    //    console.log("received launch payload", JSON.stringify(payload))
         var sourceGrid = null;
         if (battleGrid_top.uuid === payload.battleGrid)
             sourceGrid = battleGrid_top;
@@ -83,7 +83,7 @@ Engine.GameScene {
         if (endY !== undefined && endY !== null) {
             entry.z = 25
             entry.y = originalBattleGrid.mapFromGlobal(endX, endY).y;
-            console.log("launching to position", entry.y);
+      //      console.log("launching to position", entry.y);
         }
 
         entry.entry.blockState = "launch";
@@ -392,7 +392,7 @@ Engine.GameScene {
                         cardData.powerupHeroColSpan,
                         { cardUuid: cardData.powerupUuid, cardData: cardData });
         }
-        triggerPowerupActivation(cardData, { trigger: "placement", skipEnergyDrain: true });
+        triggerPowerupActivation(cardData, { trigger: "placement", skipEnergyDrain: true, resetEnergy: true });
     }
 
     function processLaunchDamageRewards(sourceGrid, damageResult) {
@@ -458,8 +458,27 @@ Engine.GameScene {
         switch (spec) {
         case "Blocks": {
             if (targetGrid.applyBlockDeltaList) {
-                var cells = Array.isArray(cardData.powerupTargetSpecData) ? cardData.powerupTargetSpecData : [];
-                targetGrid.applyBlockDeltaList(cells, amount, operation, { trigger: triggerInfo.trigger || "manual", sourceCard: cardData });
+                var rawCells = Array.isArray(cardData.powerupTargetSpecData) ? cardData.powerupTargetSpecData : [];
+                var cells = [];
+                for (var i = 0; i < rawCells.length; ++i) {
+                    var cell = rawCells[i];
+                    if (!cell)
+                        continue;
+                    var rowValue = cell.row !== undefined ? cell.row : cell.r;
+                    var columnValue = cell.column !== undefined ? cell.column : (cell.col !== undefined ? cell.col : cell.c);
+                    if (rowValue === undefined || columnValue === undefined)
+                        continue;
+                    var numericRow = Number(rowValue);
+                    var numericColumn = Number(columnValue);
+                    if (!isFinite(numericRow) || !isFinite(numericColumn))
+                        continue;
+                    cells.push({
+                        row: Math.floor(numericRow),
+                        column: Math.floor(numericColumn)
+                    });
+                }
+                if (cells.length)
+                    targetGrid.applyBlockDeltaList(cells, amount, operation, { trigger: triggerInfo.trigger || "manual", sourceCard: cardData });
             }
             break;
         }
@@ -478,6 +497,11 @@ Engine.GameScene {
 
         if (!triggerInfo.skipEnergyDrain && typeof cardData.consumeEnergy === "function")
             cardData.consumeEnergy();
+        var shouldResetEnergy = triggerInfo.resetEnergy;
+        if (shouldResetEnergy === undefined)
+            shouldResetEnergy = !!triggerInfo.skipEnergyDrain;
+        if (shouldResetEnergy && typeof cardData.resetEnergy === "function")
+            cardData.resetEnergy();
         return true;
     }
    /* Engine.GameDragItem {
@@ -668,7 +692,7 @@ onItemDroppedNowhere: function(itemName) {
     }
 
     onItemEnteredNonDropArea: {
-        console.log("item dragged and entered non-drop area", dragItemName, dropItemName)
+        //console.log("item dragged and entered non-drop area", dragItemName, dropItemName)
     }
     Timer {
         id: launchTimer
@@ -697,38 +721,7 @@ onItemDroppedNowhere: function(itemName) {
 
         }
     }
-    Engine.GameDynamicItem {
-        itemName: "test_button"
-        gameScene: debugScene
-        Button {
-            text: "click here"
-            width: 200
-            height: 200
-            x: 300
-            y: 300
-            onClicked: function(evt) {
-                console.log(debugScene.getSceneItem("test_button"), debugScene.getSceneItem("test_rect"))
 
-                launchTimer.running = true
-                var new_blocks = [];
-                var activeGrid = getBattleGridOffense();
-                console.log(activeGrid ? activeGrid.currentState : "unknown state")
-                if (!activeGrid)
-                    return;
-                for (var i=0; i<17; i++) {
-                    var r = Math.floor(Math.random() * 5);
-                    var c = Math.floor(Math.random() * 5);
-                    var blk = activeGrid.getBlockEntryAt(r,c)
-                    var wrapper = activeGrid.getBlockWrapper(r, c)
-                    wrapper.animationDurationX = 60
-                    wrapper.animationDurationY = 360
-
-                    debugScene.blocks.push(wrapper);
-               // }
-                }
-            }
-        }
-    }
 
     UI.BattleGrid {
         id:battleGrid_top
@@ -742,6 +735,31 @@ onItemDroppedNowhere: function(itemName) {
         uuid: "top"
         Component.onCompleted: {
 
+        }
+    }
+
+    AIGamePlayer {
+        id: topGridAi
+        gameScene: debugScene
+        battleGrid: battleGrid_top
+        controlledTurn: "top"
+    }
+
+    Connections {
+        target: topGridAi
+        function onSwapRequested(row1, column1, row2, column2) {
+            if (currentTurn !== "top")
+                return;
+            if (getBattleGridOffense() !== battleGrid_top)
+                return;
+            if (!battleGrid_top || typeof battleGrid_top.requestSwapWrappers !== "function")
+                return;
+            var success = battleGrid_top.requestSwapWrappers(row1, column1, row2, column2);
+            if (!success)
+                return;
+            battleGrid_top.requestState("match");
+            battleGrid_top.postSwapCascading = true;
+            turnsLeft--;
         }
     }
 

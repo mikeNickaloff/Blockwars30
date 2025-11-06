@@ -55,6 +55,7 @@ INSERT INTO files VALUES(47,'WHEEL.db','SQLite metadata store defined in AGENTS.
 INSERT INTO files VALUES(48,'game/ui/GridShakeEffector.qml','Battle grid shake effector component animating translate offsets');
 INSERT INTO files VALUES(49,'game/ui/BattleGridHealthBar.qml','Displays a health progress bar synced to a battle grid''s main health.');
 INSERT INTO files VALUES(50,'game/scripts/battlegrid.js','Shared battle grid helper logic used by BattleGrid for match detection and state utilities.');
+INSERT INTO files VALUES(51,'game/AIGamePlayer.qml','AI helper that watches battle grid state and requests match-producing swaps automatically.');
 CREATE TABLE defs (
   id INTEGER PRIMARY KEY,
   file_id INTEGER NOT NULL,
@@ -674,6 +675,14 @@ INSERT INTO defs VALUES(616,50,'function','markMatchedBlocks(grid)','grid:var','
 INSERT INTO defs VALUES(617,3,'function','crc32(inp_string)','inp_string:string','Produces an uppercase CRC32 hex digest for the supplied block-color signature string.');
 INSERT INTO defs VALUES(618,21,'function','serialize()',NULL,'Returns a plain object snapshot of the block''s color, grid position, and health.');
 INSERT INTO defs VALUES(619,50,'function','serializeBlocks(grid)','grid:var','Serializes each block entry in the grid''s matrix using its serialize helper and returns the collection.');
+INSERT INTO defs VALUES(620,51,'function','schedulePlanning(reason)','reason:string','Queues a short-lived timer that will run the move planner once the AI can legally act.');
+INSERT INTO defs VALUES(621,51,'function','canActNow()',NULL,'Returns true when the configured battle grid is the active turn owner, has moves remaining, and is waiting for player input.');
+INSERT INTO defs VALUES(622,51,'function','planMove()',NULL,'Builds the current color matrix, harvests legal swaps, picks one at random, and emits swapRequested.');
+INSERT INTO defs VALUES(623,51,'function','captureColorMatrix()',NULL,'Returns a grid of block colors derived from battleGrid.blockMatrix so swap calculations can ignore wrapper internals.');
+INSERT INTO defs VALUES(624,51,'function','findCandidateSwaps(matrix)','matrix:var','Scans adjacent cell pairs and records those that would create a 3+ run if swapped.');
+INSERT INTO defs VALUES(625,51,'function','swapCreatesMatch(matrix, row1, column1, row2, column2)','matrix:var, row1:int, column1:int, row2:int, column2:int','Temporarily swaps two cells inside the working color grid and reports whether either axis now holds a valid run.');
+INSERT INTO defs VALUES(626,51,'function','hasLineMatchAt(matrix, row, column)','matrix:var, row:int, column:int','Counts contiguous like-colored cells around a coordinate horizontally and vertically to determine if it forms a run.');
+INSERT INTO defs VALUES(627,51,'signal','swapRequested(row1, column1, row2, column2)','row1:int, column1:int, row2:int, column2:int','Emitted when the AI selects an adjacent swap that should be executed on the controlled battle grid.');
 CREATE TABLE refs (
   id INTEGER PRIMARY KEY,
   def_id INTEGER NOT NULL,
