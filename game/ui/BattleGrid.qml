@@ -255,21 +255,55 @@ Item {
         entry.energyAmount = 0;
     }
 
-    function registerBlockEntry(entry) {
+    function registerBlockEntry(item) {
+        if (!item)
+            return;
+        var entry = item.entry ? item.entry : item;
         if (!entry || entry.__battleGridSignalRegistered)
             return;
+
+        entry.__battleGridWrapper = item.entry ? item : entry.__battleGridWrapper || null;
+
         var hasDestroyedSignal = entry.blockDestroyed && typeof entry.blockDestroyed.connect === "function";
         var hasStateSignal = entry.blockStateChanged && typeof entry.blockStateChanged.connect === "function";
-        if (!hasDestroyedSignal && !hasStateSignal)
+        var hasHealthSignal = entry.healthChanged && typeof entry.healthChanged.connect === "function";
+        var hasRowSignal = entry.rowChanged && typeof entry.rowChanged.connect === "function";
+        var hasColumnSignal = entry.columnChanged && typeof entry.columnChanged.connect === "function";
+
+        if (!hasDestroyedSignal && !hasStateSignal && !hasHealthSignal && !hasRowSignal && !hasColumnSignal)
             return;
+
         entry.__battleGridSignalRegistered = true;
+
         if (hasDestroyedSignal)
             entry.blockDestroyed.connect(handleBlockDestroyed);
+
         if (hasStateSignal) {
             entry.blockStateChanged.connect(function(newState) {
                 synchronizeHeroBlockState(entry, newState);
             });
         }
+
+        if (hasHealthSignal) {
+            entry.healthChanged.connect(function() {
+                synchronizeHeroBlockHealth(entry);
+            });
+        }
+
+        if (hasRowSignal) {
+            entry.rowChanged.connect(function() {
+                synchronizeHeroBlockPosition(entry, true);
+            });
+        }
+
+        if (hasColumnSignal) {
+            entry.columnChanged.connect(function() {
+                synchronizeHeroBlockPosition(entry, false);
+            });
+        }
+
+        entry.__previousGridRow = entry.row;
+        entry.__previousGridColumn = entry.column;
     }
 
     function synchronizeHeroBlockState(entry, newState) {
@@ -295,6 +329,121 @@ Item {
         if (placement.heroItem)
             placement.heroItem.heroState = newState;
         placement.__stateSync = false;
+    }
+
+    function synchronizeHeroBlockHealth(entry) {
+        if (!entry || entry.__heroHealthSyncGuard)
+            return;
+        var bindingKey = entry.heroBindingKey || entry.powerupHeroUuid || null;
+        if (!bindingKey)
+            return;
+        var placement = heroPlacementForKey(bindingKey);
+        if (!placement || (placement.__healthSyncCount && placement.__healthSyncCount > 0))
+            return;
+        if (!placement.cardData)
+            return;
+
+        var heroHealth = Math.max(0, placement.cardData.heroCurrentHealth || 0);
+        var blockHealth = Math.max(0, entry.health || 0);
+        if (blockHealth === heroHealth)
+            return;
+
+        entry.__heroHealthSyncGuard = true;
+        placement.__healthSyncCount = (placement.__healthSyncCount || 0) + 1;
+
+        if (blockHealth < heroHealth)
+            applyDamageToHeroCell(entry.row, entry.column, heroHealth - blockHealth, { source: "linkedBlock" });
+        else
+            applyHeroHealingAt(entry.row, entry.column, blockHealth - heroHealth, { source: "linkedBlock" });
+
+        placement.__healthSyncCount = Math.max(0, (placement.__healthSyncCount || 1) - 1);
+        entry.__heroHealthSyncGuard = false;
+    }
+
+    function synchronizeHeroBlockPosition(entry, isRowMutation) {
+        if (!entry || entry.__heroPositionGuard)
+            return;
+        var bindingKey = entry.heroBindingKey || entry.powerupHeroUuid || null;
+        if (!bindingKey)
+            return;
+        var placement = heroPlacementForKey(bindingKey);
+        if (!placement)
+            return;
+
+        if (placement.__positionSyncCount && placement.__positionSyncCount > 0) {
+            if (isRowMutation)
+                entry.__previousGridRow = entry.row;
+            else
+                entry.__previousGridColumn = entry.column;
+            return;
+        }
+
+        var previousRow = entry.__previousGridRow !== undefined ? entry.__previousGridRow : entry.row;
+        var previousColumn = entry.__previousGridColumn !== undefined ? entry.__previousGridColumn : entry.column;
+
+        var deltaRow = 0;
+        var deltaColumn = 0;
+        if (isRowMutation) {
+            deltaRow = entry.row - previousRow;
+            entry.__previousGridRow = entry.row;
+        } else {
+            deltaColumn = entry.column - previousColumn;
+            entry.__previousGridColumn = entry.column;
+        }
+
+        if (deltaRow === 0 && deltaColumn === 0)
+            return;
+
+        entry.__heroPositionGuard = true;
+        placement.__positionSyncCount = (placement.__positionSyncCount || 0) + 1;
+        var success = applyHeroPlacementOffset(placement, deltaRow, deltaColumn);
+        placement.__positionSyncCount = Math.max(0, (placement.__positionSyncCount || 1) - 1);
+        entry.__heroPositionGuard = false;
+
+        if (!success) {
+            entry.__heroPositionGuard = true;
+            if (isRowMutation)
+                entry.row = previousRow;
+            else
+                entry.column = previousColumn;
+            entry.__heroPositionGuard = false;
+            entry.__previousGridRow = entry.row;
+            entry.__previousGridColumn = entry.column;
+        }
+    }
+
+    function applyHeroPlacementOffset(placement, deltaRow, deltaColumn) {
+        if (!placement)
+            return false;
+
+        var steps = [];
+        if (deltaRow !== 0) {
+            var stepRow = deltaRow > 0 ? 1 : -1;
+            for (var r = 0; r < Math.abs(deltaRow); ++r)
+                steps.push({ dr: stepRow, dc: 0 });
+        }
+        if (deltaColumn !== 0) {
+            var stepCol = deltaColumn > 0 ? 1 : -1;
+            for (var c = 0; c < Math.abs(deltaColumn); ++c)
+                steps.push({ dr: 0, dc: stepCol });
+        }
+
+        if (steps.length === 0)
+            return true;
+
+        var executed = [];
+        for (var i = 0; i < steps.length; ++i) {
+            var step = steps[i];
+            if (!attemptHeroShift(placement, step.dr, step.dc)) {
+                for (var ri = executed.length - 1; ri >= 0; --ri) {
+                    var revert = executed[ri];
+                    attemptHeroShift(placement, -revert.dr, -revert.dc);
+                }
+                return false;
+            }
+            executed.push(step);
+        }
+        return true;
     }
 
     function setWrapperAt(row, column, wrapper) {
@@ -444,6 +593,61 @@ Item {
         return heroKeyAt(row, column) !== null;
     }
 
+    function unlinkWrapperFromHero(wrapper) {
+        if (!wrapper)
+            return;
+        if (wrapper.entry) {
+            wrapper.entry.heroBindingKey = null;
+            wrapper.entry.heroLinked = false;
+            wrapper.entry.powerupHeroLinked = false;
+            wrapper.entry.powerupHeroUuid = "";
+            wrapper.entry.powerupHeroItem = null;
+            wrapper.entry.powerupHeroRowOffset = 0;
+            wrapper.entry.powerupHeroColOffset = 0;
+            wrapper.entry.__heroHealthSyncGuard = false;
+            wrapper.entry.__heroPositionGuard = false;
+            wrapper.entry.__previousGridRow = wrapper.entry.row;
+            wrapper.entry.__previousGridColumn = wrapper.entry.column;
+        }
+        wrapper.heroBindingKey = null;
+        wrapper.powerupHeroLinked = false;
+        wrapper.powerupHeroUuid = "";
+        wrapper.powerupHeroItem = null;
+        wrapper.powerupHeroRowOffset = 0;
+        wrapper.powerupHeroColOffset = 0;
+        wrapper.heroAnchorRow = undefined;
+        wrapper.heroAnchorColumn = undefined;
+    }
+
+    function linkWrapperToHero(wrapper, placement, row, column) {
+        if (!wrapper || !placement)
+            return;
+        var heroKey = placement.key;
+        var relRow = row - placement.row;
+        var relCol = column - placement.column;
+        wrapper.heroBindingKey = heroKey;
+        wrapper.powerupHeroLinked = true;
+        wrapper.powerupHeroUuid = heroKey;
+        wrapper.powerupHeroItem = placement.heroItem || null;
+        wrapper.powerupHeroRowOffset = relRow;
+        wrapper.powerupHeroColOffset = relCol;
+        wrapper.heroAnchorRow = placement.row;
+        wrapper.heroAnchorColumn = placement.column;
+        if (wrapper.entry) {
+            wrapper.entry.heroBindingKey = heroKey;
+            wrapper.entry.heroLinked = true;
+            wrapper.entry.powerupHeroLinked = true;
+            wrapper.entry.powerupHeroUuid = heroKey;
+            wrapper.entry.powerupHeroItem = placement.heroItem || null;
+            wrapper.entry.powerupHeroRowOffset = relRow;
+            wrapper.entry.powerupHeroColOffset = relCol;
+            wrapper.entry.__previousGridRow = row;
+            wrapper.entry.__previousGridColumn = column;
+            wrapper.entry.__heroHealthSyncGuard = false;
+            wrapper.entry.__heroPositionGuard = false;
+        }
+    }
+
     function clearHeroPlacementCells(placement) {
         if (!placement || !placement.boundBlocks)
             return;
@@ -457,13 +661,12 @@ Item {
             var wrap = record.wrapper;
             if (!wrap)
                 continue;
-            wrap.heroBindingKey = null;
-            if (wrap.entry)
-                wrap.entry.heroBindingKey = null;
+            unlinkWrapperFromHero(wrap);
         }
         if (placement.heroItem)
             placement.heroItem.heroState = "idle";
         placement.__stateSync = false;
+        placement.boundBlocks = [];
     }
 
     function bindHeroPlacement(placement) {
@@ -477,13 +680,14 @@ Item {
             if (!record || !record.wrapper)
                 continue;
             var wrapper = record.wrapper;
-            wrapper.heroBindingKey = placement.key;
-            if (wrapper.entry) {
-                wrapper.entry.heroBindingKey = placement.key;
-                if (placement.cardData)
-                    wrapper.entry.health = Math.max(0, placement.cardData.heroCurrentHealth);
-            }
-            placement.boundBlocks.push({ row: record.row, column: record.column, wrapper: wrapper });
+            linkWrapperToHero(wrapper, placement, record.row, record.column);
+            placement.boundBlocks.push({
+                                          row: record.row,
+                                          column: record.column,
+                                          wrapper: wrapper,
+                                          relRow: record.row - placement.row,
+                                          relCol: record.column - placement.column
+                                      });
             setHeroCellKey(record.row, record.column, placement.key);
         }
         if (placement.heroItem) {
@@ -501,7 +705,13 @@ Item {
             var record = placement.boundBlocks[i];
             if (!record || !record.wrapper || !record.wrapper.entry)
                 continue;
-            record.wrapper.entry.health = health;
+            var linkedEntry = record.wrapper.entry;
+            var previousGuard = linkedEntry.__heroHealthSyncGuard;
+            linkedEntry.__heroHealthSyncGuard = true;
+            linkedEntry.health = health;
+            if (linkedEntry.cachedHealth !== undefined)
+                linkedEntry.cachedHealth = health;
+            linkedEntry.__heroHealthSyncGuard = previousGuard;
         }
     }
 
@@ -650,112 +860,117 @@ Item {
     function attemptHeroShift(placement, deltaRow, deltaCol) {
         if (!placement)
             return false;
-        if ((Math.abs(deltaRow) + Math.abs(deltaCol)) !== 1)
-            return false;
-        var newRow = placement.row + deltaRow;
-        var newCol = placement.column + deltaCol;
-        if (!heroAreaWithinBounds(newRow, newCol, placement.rowSpan, placement.colSpan))
-            return false;
-
-        var currentCells = heroCellsForArea(placement.row, placement.column, placement.rowSpan, placement.colSpan);
-        var newCells = heroCellsForArea(newRow, newCol, placement.rowSpan, placement.colSpan);
-        var currentMap = {};
-        for (var i = 0; i < currentCells.length; ++i) {
-            var key = currentCells[i].row + ":" + currentCells[i].column;
-            currentMap[key] = true;
-        }
-        var newMap = {};
-        for (var n = 0; n < newCells.length; ++n) {
-            var nKey = newCells[n].row + ":" + newCells[n].column;
-            newMap[nKey] = true;
-        }
-
-        var leaving = [];
-        for (var c = 0; c < currentCells.length; ++c) {
-            var cell = currentCells[c];
-            if (!newMap[cell.row + ":" + cell.column])
-                leaving.push(cell);
-        }
-
-        var entering = [];
-        for (var m = 0; m < newCells.length; ++m) {
-            var cellNew = newCells[m];
-            if (!currentMap[cellNew.row + ":" + cellNew.column])
-                entering.push(cellNew);
-        }
-
-        if (entering.length !== leaving.length)
-            return false;
-
-        var incomingWrappers = [];
-        for (var e = 0; e < entering.length; ++e) {
-            var enteringCell = entering[e];
-            var incomingWrapper = getBlockWrapper(enteringCell.row, enteringCell.column);
-            if (!incomingWrapper)
+        placement.__positionSyncCount = (placement.__positionSyncCount || 0) + 1;
+        try {
+            if ((Math.abs(deltaRow) + Math.abs(deltaCol)) !== 1)
                 return false;
-            var otherPlacement = heroPlacementForWrapper(incomingWrapper);
-            if (otherPlacement && otherPlacement.key !== placement.key)
+            var newRow = placement.row + deltaRow;
+            var newCol = placement.column + deltaCol;
+            if (!heroAreaWithinBounds(newRow, newCol, placement.rowSpan, placement.colSpan))
                 return false;
-            incomingWrappers.push({ cell: enteringCell, wrapper: incomingWrapper });
+
+            var currentCells = heroCellsForArea(placement.row, placement.column, placement.rowSpan, placement.colSpan);
+            var newCells = heroCellsForArea(newRow, newCol, placement.rowSpan, placement.colSpan);
+            var currentMap = {};
+            for (var i = 0; i < currentCells.length; ++i) {
+                var key = currentCells[i].row + ":" + currentCells[i].column;
+                currentMap[key] = true;
+            }
+            var newMap = {};
+            for (var n = 0; n < newCells.length; ++n) {
+                var nKey = newCells[n].row + ":" + newCells[n].column;
+                newMap[nKey] = true;
+            }
+
+            var leaving = [];
+            for (var c = 0; c < currentCells.length; ++c) {
+                var cell = currentCells[c];
+                if (!newMap[cell.row + ":" + cell.column])
+                    leaving.push(cell);
+            }
+
+            var entering = [];
+            for (var m = 0; m < newCells.length; ++m) {
+                var cellNew = newCells[m];
+                if (!currentMap[cellNew.row + ":" + cellNew.column])
+                    entering.push(cellNew);
+            }
+
+            if (entering.length !== leaving.length)
+                return false;
+
+            var incomingWrappers = [];
+            for (var e = 0; e < entering.length; ++e) {
+                var enteringCell = entering[e];
+                var incomingWrapper = getBlockWrapper(enteringCell.row, enteringCell.column);
+                if (!incomingWrapper)
+                    return false;
+                var otherPlacement = heroPlacementForWrapper(incomingWrapper);
+                if (otherPlacement && otherPlacement.key !== placement.key)
+                    return false;
+                incomingWrappers.push({ cell: enteringCell, wrapper: incomingWrapper });
+            }
+
+            var previousBlocks = placement.boundBlocks ? placement.boundBlocks.slice() : [];
+            clearHeroPlacementCells(placement);
+
+            for (var iw = 0; iw < incomingWrappers.length; ++iw) {
+                var incoming = incomingWrappers[iw];
+                clearWrapperAt(incoming.cell.row, incoming.cell.column);
+            }
+
+            var heroWrappers = [];
+            for (var hb = 0; hb < previousBlocks.length; ++hb) {
+                var blockRecord = previousBlocks[hb];
+                if (!blockRecord || !blockRecord.wrapper)
+                    continue;
+                heroWrappers.push({
+                                      wrapper: blockRecord.wrapper,
+                                      relRow: blockRecord.row - placement.row,
+                                      relCol: blockRecord.column - placement.column
+                                  });
+                clearWrapperAt(blockRecord.row, blockRecord.column);
+            }
+
+            for (var hw = 0; hw < heroWrappers.length; ++hw) {
+                var heroRecord = heroWrappers[hw];
+                var targetRow = newRow + heroRecord.relRow;
+                var targetColumn = newCol + heroRecord.relCol;
+                setWrapperAt(targetRow, targetColumn, heroRecord.wrapper);
+            }
+
+            leaving.sort(function(a, b) {
+                if (a.row !== b.row)
+                    return a.row - b.row;
+                return a.column - b.column;
+            });
+            incomingWrappers.sort(function(a, b) {
+                if (a.cell.row !== b.cell.row)
+                    return a.cell.row - b.cell.row;
+                return a.cell.column - b.cell.column;
+            });
+
+            for (var li = 0; li < incomingWrappers.length; ++li) {
+                var leaveCell = leaving[li];
+                var moveWrapper = incomingWrappers[li].wrapper;
+                setWrapperAt(leaveCell.row, leaveCell.column, moveWrapper);
+            }
+
+            placement.row = newRow;
+            placement.column = newCol;
+            bindHeroPlacement(placement);
+            refreshHeroBlockHealth(placement);
+            if (placement.heroItem) {
+                var heroPos = cellPosition(newRow, newCol);
+                placement.heroItem.x = heroPos.x;
+                placement.heroItem.y = heroPos.y;
+                placement.heroItem.anchoredRow = newRow;
+                placement.heroItem.anchoredColumn = newCol;
+            }
+            return true;
+        } finally {
+            placement.__positionSyncCount = Math.max(0, (placement.__positionSyncCount || 1) - 1);
         }
-
-        var previousBlocks = placement.boundBlocks ? placement.boundBlocks.slice() : [];
-        clearHeroPlacementCells(placement);
-
-        for (var iw = 0; iw < incomingWrappers.length; ++iw) {
-            var incoming = incomingWrappers[iw];
-            clearWrapperAt(incoming.cell.row, incoming.cell.column);
-        }
-
-        var heroWrappers = [];
-        for (var hb = 0; hb < previousBlocks.length; ++hb) {
-            var blockRecord = previousBlocks[hb];
-            if (!blockRecord || !blockRecord.wrapper)
-                continue;
-            heroWrappers.push({
-                                  wrapper: blockRecord.wrapper,
-                                  relRow: blockRecord.row - placement.row,
-                                  relCol: blockRecord.column - placement.column
-                              });
-            clearWrapperAt(blockRecord.row, blockRecord.column);
-        }
-
-        for (var hw = 0; hw < heroWrappers.length; ++hw) {
-            var heroRecord = heroWrappers[hw];
-            var targetRow = newRow + heroRecord.relRow;
-            var targetColumn = newCol + heroRecord.relCol;
-            setWrapperAt(targetRow, targetColumn, heroRecord.wrapper);
-        }
-
-        leaving.sort(function(a, b) {
-            if (a.row !== b.row)
-                return a.row - b.row;
-            return a.column - b.column;
-        });
-        incomingWrappers.sort(function(a, b) {
-            if (a.cell.row !== b.cell.row)
-                return a.cell.row - b.cell.row;
-            return a.cell.column - b.cell.column;
-        });
-
-        for (var li = 0; li < incomingWrappers.length; ++li) {
-            var leaveCell = leaving[li];
-            var moveWrapper = incomingWrappers[li].wrapper;
-            setWrapperAt(leaveCell.row, leaveCell.column, moveWrapper);
-        }
-
-        placement.row = newRow;
-        placement.column = newCol;
-        bindHeroPlacement(placement);
-        refreshHeroBlockHealth(placement);
-        if (placement.heroItem) {
-            var heroPos = cellPosition(newRow, newCol);
-            placement.heroItem.x = heroPos.x;
-            placement.heroItem.y = heroPos.y;
-            placement.heroItem.anchoredRow = newRow;
-            placement.heroItem.anchoredColumn = newCol;
-        }
-        return true;
     }
 
     function requestSwapWrappers(row1, column1, row2, column2) {
@@ -811,7 +1026,9 @@ Item {
             colSpan: colSpan,
             metadata: meta,
             boundBlocks: [],
-            __stateSync: false
+            __stateSync: false,
+            __positionSyncCount: 0,
+            __healthSyncCount: 0
         };
         heroPlacements[key] = placement;
         if (cardData) {

@@ -30,6 +30,16 @@ Item {
     property Component gainCooldownComponent: blockGainCooldownComponent
     property var heroBindingKey
     property var lowerBlockRefs: []
+    property bool heroLinked: false
+    property bool powerupHeroLinked: false
+    property string powerupHeroUuid: ""
+    property var powerupHeroItem: null
+    property int powerupHeroRowOffset: 0
+    property int powerupHeroColOffset: 0
+    property bool __heroHealthSyncGuard: false
+    property bool __heroPositionGuard: false
+    property int __previousGridRow: -1
+    property int __previousGridColumn: -1
 
     signal blockDestroyed(var itemName)
     signal modifiedBlockGridCell()
@@ -43,6 +53,10 @@ Item {
         modifiedBlockGridCell()
     }
     onHealthChanged: {
+        if (blockRoot.__heroHealthSyncGuard) {
+            cachedHealth = health
+            return
+        }
         if (health > cachedHealth) {
             if (blockRoot.blockState === "idle") {
                 blockRoot.blockState = "gain"
@@ -56,6 +70,8 @@ Item {
     Component.onCompleted: {
         blockRoot.blockState = "idle"
         console.log("block instance created")
+        blockRoot.__previousGridRow = blockRoot.row
+        blockRoot.__previousGridColumn = blockRoot.column
     }
     onBlockStateChanged: {
         console.log("block state set to",blockState);
