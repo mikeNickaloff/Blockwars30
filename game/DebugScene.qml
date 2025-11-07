@@ -559,24 +559,7 @@ Engine.GameScene {
         if (battleGrid_bottom && typeof battleGrid_bottom.requestState === "function")
             battleGrid_bottom.requestState("wait");
     }
-    Engine.GameDropItem {
-        id: dropItem
-        itemName: "drop_item"
-        gameScene: debugScene
-        width: 200
-        height: 200
-        x: 100
-        y: 100
-        entry: blueRect
 
-
-        Rectangle {
-            id: blueRect
-            color: "blue"
-            width: 200
-            height: 200
-        }
-    }
     property int launchIndex: 0
     Timer {
         id: checkRefillTimer
