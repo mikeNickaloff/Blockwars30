@@ -73,7 +73,7 @@ Item {
         if (gameScene.currentTurn !== controlledTurn)
             return false;
         const state = (battleGrid.currentState || "").toString().toLowerCase();
-        if (state !== "wait")
+        if (state !== "idle")
             return false;
         if (battleGrid.postSwapCascading)
             return false;
@@ -90,6 +90,7 @@ Item {
         if (!swaps.length)
             return;
         const choice = swaps[Math.floor(Math.random() * swaps.length)];
+        console.log("AI wants to swap", JSON.stringify(choice));
         swapRequested(choice.row1, choice.column1, choice.row2, choice.column2);
     }
 

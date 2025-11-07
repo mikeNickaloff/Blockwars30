@@ -6,6 +6,7 @@ import "../lib" as Lib
 import "ui" as UI
 import "data" as Data
 import "factory.js" as Factory
+import "scripts/battlegrid.js" as BattleGridLogic
 Engine.GameScene {
     id: debugScene
     anchors.fill: parent
@@ -25,6 +26,10 @@ Engine.GameScene {
     }
 
 
+    Rectangle {
+        anchors.fill: parent
+        color: "black"
+    }
    onCurrentTurnChanged: handleTurnSwitch()
 
     function getBattleGridOffense() {
@@ -273,12 +278,23 @@ Engine.GameScene {
     function handleHeroPlacementRequest(targetGrid, cardData, heroItem, sceneX, sceneY) {
         if (!cardData || !targetGrid)
             return;
+        if (!targetGrid.playerControlled) {
+            console.log("BattleCardSidebar: hero placement restricted to player grid");
+            return;
+        }
         if (cardData.heroPlaced) {
             console.log("BattleCardSidebar: card already placed");
             return;
         }
         if (cardData.powerupCardHealth !== undefined && cardData.powerupCardHealth <= 0) {
             console.log("BattleCardSidebar: card health depleted");
+            return;
+        }
+        var gridStateOk = targetGrid.normalizeStateName
+                ? targetGrid.normalizeStateName(targetGrid.currentState) === "idle"
+                : (targetGrid.currentState || "").toString().toLowerCase() === "idle";
+        if (!gridStateOk || !BattleGridLogic.allEntriesIdleNoMissing(targetGrid)) {
+            console.log("BattleCardSidebar: hero placement requires idle, fully populated grid");
             return;
         }
         var placement = heroPlacementInfo(targetGrid, cardData, sceneX, sceneY);
@@ -430,9 +446,12 @@ Engine.GameScene {
         if (delta <= 0)
             return;
         var op = (operation || "decrease").toString().toLowerCase();
-        if (op === "increase")
-            targetGrid.mainHealth += delta;
-        else
+        if (op === "increase") {
+            var maxHealth = targetGrid.mainHealthMax !== undefined ? targetGrid.mainHealthMax : targetGrid.mainHealth;
+            if (maxHealth === undefined || maxHealth <= 0)
+                maxHealth = delta;
+            targetGrid.mainHealth = Math.min(maxHealth, targetGrid.mainHealth + delta);
+        } else
             targetGrid.mainHealth = Math.max(0, targetGrid.mainHealth - delta);
     }
 
@@ -443,6 +462,13 @@ Engine.GameScene {
         if (!sourceGrid)
             return false;
         if (!cardData.heroPlaced || !cardData.heroAlive)
+            return false;
+        var normalizedState = sourceGrid.normalizeStateName
+                ? sourceGrid.normalizeStateName(sourceGrid.currentState)
+                : (sourceGrid.currentState || "").toString().toLowerCase();
+        if (normalizedState !== "idle")
+            return false;
+        if (!BattleGridLogic.allEntriesIdleNoMissing(sourceGrid))
             return false;
 
         var triggerInfo = options || {};
@@ -582,28 +608,42 @@ Engine.GameScene {
     }
 onItemDroppedNowhere: function(itemName) {
     console.log("drag item dropped nowhere")
+        var playerGrid = battleGrid_bottom;
+        if (!playerGrid)
+            return
         var dragItem = getSceneItem(itemName);
+        if (!dragItem || dragItem.entry.battleGrid !== playerGrid)
+            return
     function snapItemToGrid(item, row, col) {
-        var grid = getBattleGridOffense();
-        item.x = grid.cellPosition(row, col).x
-        item.y = grid.cellPosition(row, col).y
+        item.x = playerGrid.cellPosition(row, col).x
+        item.y = playerGrid.cellPosition(row, col).y
 
     }
     snapItemToGrid(dragItem, dragItem.entry.row, dragItem.entry.column)
 }
     onItemDroppedInNonDropArea: function(dragItemName, dropItemName, startx, starty, endx, endy) {
+        var playerGrid = battleGrid_bottom;
+        if (!playerGrid)
+            return
         function snapItemToGrid(item, row, col) {
-                var bg = getBattleGridOffense();
-            item.x = bg.cellPosition(row, col).x
-            item.y = bg.cellPosition(row, col).y
+            item.x = playerGrid.cellPosition(row, col).x
+            item.y = playerGrid.cellPosition(row, col).y
 
 
         }
 
         var dragItem = getSceneItem(dragItemName);
         var dropItem = getSceneItem(dropItemName)
-        if (dragItem.entry.battleGrid !== getBattleGridOffense()) { snapItemToGrid(dragItem, dragItem.entry.row, dragItem.entry.col); return }
-        if (dropItem.entry.battleGrid !== getBattleGridOffense()) { snapItemToGrid(dragItem, dragItem.entry.row, dragItem.entry.col); return }
+        if (!dragItem || dragItem.entry.battleGrid !== playerGrid) {
+            if (dragItem)
+                snapItemToGrid(dragItem, dragItem.entry.row, dragItem.entry.col);
+            return
+        }
+        if (!dropItem || dropItem.entry.battleGrid !== playerGrid) {
+            if (dragItem)
+                snapItemToGrid(dragItem, dragItem.entry.row, dragItem.entry.col);
+            return
+        }
 
         if ((dragItemName.indexOf("block_drag") == 0) && (dropItemName.indexOf("block_drag") == 0)) {
 
@@ -621,7 +661,7 @@ onItemDroppedNowhere: function(itemName) {
             if (rowDelta > 1) { snapItemToGrid(dragItem, row1, col1); return }
             if (colDelta > 1) { snapItemToGrid(dragItem, row1, col1); return }
 
-            var bg = getBattleGridOffense();
+            var bg = playerGrid;
             var swapSuccess = bg.requestSwapWrappers(row1, col1, row2, col2);
             if (!swapSuccess) {
                 snapItemToGrid(dragItem, row1, col1)
@@ -711,14 +751,35 @@ onItemDroppedNowhere: function(itemName) {
         width: 300
         height: 300
         x: 200
-        y: 0
+        y: 60
         gameScene: debugScene
+        mainHealthMax: 2000
+        mainHealth: 2000
+        playerControlled: false
+        onCurrentStateChanged: {
+            if (battleGrid_top.currentState == "idle") {
+                if (debugScene.turnsLeft > 0) {
 
+                    if (battleGrid_top.postSwapCascading === false) {
+                        topGridAi.planMove()
+                    }
+                }
+            }
+        }
         launchDirection: "down"
         uuid: "top"
         Component.onCompleted: {
 
         }
+    }
+
+    UI.BattleGridHealthBar {
+        id: battleGridTopHealth
+        battleGrid: battleGrid_top
+        anchors.bottom: battleGrid_top.top
+        anchors.bottomMargin: 12
+        anchors.horizontalCenter: battleGrid_top.horizontalCenter
+        z: battleGrid_top.z + 1
     }
 
     AIGamePlayer {
@@ -751,12 +812,13 @@ onItemDroppedNowhere: function(itemName) {
         gameScene: debugScene
         battleGrid: battleGrid_top
         loadout: opponentLoadout
+        interactionsEnabled: false
         heroCellWidth: battleGrid_top.cellW
         heroCellHeight: battleGrid_top.cellH
         heroCellSpacing: Math.max(battleGrid_top.gapX, battleGrid_top.gapY)
         anchors.top: battleGrid_top.top
         anchors.bottom: battleGrid_top.bottom
-        anchors.leftMargin: 32
+        anchors.leftMargin: 72
         onHeroPlacementRequested: function(cardData, heroItem, sceneX, sceneY) {
             handleHeroPlacementRequest(battleGrid_top, cardData, heroItem, sceneX, sceneY)
         }
@@ -775,14 +837,26 @@ onItemDroppedNowhere: function(itemName) {
         width: 300
         height: 300
         x: 200
-        y: 400
+        y: 340
         gameScene: debugScene
         uuid: "bottom"
         launchDirection: "up"
+        mainHealthMax: 2000
+        mainHealth: 2000
+        playerControlled: true
 
         Component.onCompleted: {
 
         }
+    }
+
+    UI.BattleGridHealthBar {
+        id: battleGridBottomHealth
+        battleGrid: battleGrid_bottom
+        anchors.top: battleGrid_bottom.bottom
+        anchors.topMargin: 12
+        anchors.horizontalCenter: battleGrid_bottom.horizontalCenter
+        z: battleGrid_bottom.z + 1
     }
 
     UI.BattleCardSidebar {
@@ -790,12 +864,13 @@ onItemDroppedNowhere: function(itemName) {
         gameScene: debugScene
         battleGrid: battleGrid_bottom
         loadout: playerLoadout
+        interactionsEnabled: true
         heroCellWidth: battleGrid_bottom.cellW
         heroCellHeight: battleGrid_bottom.cellH
         heroCellSpacing: Math.max(battleGrid_bottom.gapX, battleGrid_bottom.gapY)
         anchors.top: battleGrid_bottom.top
         anchors.bottom: battleGrid_bottom.bottom
-        anchors.leftMargin: 32
+        anchors.leftMargin: 72
         onHeroPlacementRequested: function(cardData, heroItem, sceneX, sceneY) {
             handleHeroPlacementRequest(battleGrid_bottom, cardData, heroItem, sceneX, sceneY)
         }

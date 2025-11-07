@@ -33,6 +33,7 @@ Item {
     property color backgroundColor: "#0b1422"
     property color frameColor: "#162236"
     property var sidebarCards: []
+    property bool interactionsEnabled: true
 
     signal heroPreviewStarted(var cardData, var heroItem)
     signal heroPreviewMoved(var cardData, var heroItem)
@@ -51,6 +52,10 @@ Item {
     onHeightChanged: repositionCards()
     onSlotHeightChanged: repositionCards()
     onBattleGridChanged: repositionCards()
+    onInteractionsEnabledChanged: {
+        for (var idx = 0; idx < sidebarCards.length; ++idx)
+            updateDragEnabled(sidebarCards[idx]);
+    }
 
     Connections {
         target: battleGrid
@@ -263,9 +268,9 @@ Item {
         var cardData = slot.cardData
         var heroReady = cardData.heroPlaced && cardData.heroAlive && cardData.activationReady
         var allowDrag = cardData.activationReady && !cardData.dragLocked && !cardData.heroPlaced && !cardData.heroDefeated
-        slot.dragItem.enabled = allowDrag || heroReady
+        slot.dragItem.enabled = interactionsEnabled && (allowDrag || heroReady)
         if (slot.dragItem.entry && slot.dragItem.entry.interactive !== undefined)
-            slot.dragItem.entry.interactive = heroReady && !allowDrag
+            slot.dragItem.entry.interactive = interactionsEnabled && heroReady && !allowDrag
     }
 
     function snapCardHome(slot) {
@@ -279,6 +284,11 @@ Item {
     function handleCardDragStart(slot) {
         if (!slot || !slot.cardData)
             return
+        if (!interactionsEnabled) {
+            slot.dragging = false
+            snapCardHome(slot)
+            return
+        }
         if (slot.cardData.heroPlaced) {
             if (slot.cardData.heroAlive && slot.cardData.activationReady)
                 requestHeroActivation(slot)
@@ -370,6 +380,8 @@ Item {
     }
     function requestHeroActivation(slot) {
         if (!slot || !slot.cardData)
+            return
+        if (!interactionsEnabled)
             return
         if (!slot.cardData.heroPlaced)
             return

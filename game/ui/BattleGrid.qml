@@ -27,10 +27,10 @@ Item {
     // Grid configuration.
     property int gridCols: 6
     property int gridRows: 6
-    property int cellW: 50
-    property int cellH: 50
-    property int gapX: 2
-    property int gapY: 2
+    property int cellW: 40
+    property int cellH: 40
+    property int gapX: 1
+    property int gapY: 1
     property int originX: 40
     property int originY: 40
     readonly property int gridHeight: (gridRows * cellH) + Math.max(0, gridRows - 1) * gapY
@@ -42,10 +42,12 @@ Item {
     readonly property string blockIdPrefix: "grid_block"
 
     property string uuid: Factory.uid("battleGrid")
-    property int mainHealth: 100
+    property int mainHealthMax: 100
+    property int mainHealth: mainHealthMax
     property bool postSwapCascading: false
     property var launchSequence: []
     property int launchSequenceIndex: 0
+    property bool playerControlled: false
 
     property string currentState: "init"
     property string previousState: ""
@@ -66,6 +68,30 @@ Item {
     property var __launchRelayRegistered: false
     property var heroPlacements: ({})
     property var heroCellMap: []
+
+    onPlayerControlledChanged: {
+        for (var idx = 0; idx < instances.length; ++idx) {
+            var wrapper = instances[idx];
+            if (wrapper && wrapper.enabled !== undefined)
+                wrapper.enabled = playerControlled;
+        }
+    }
+
+    onMainHealthChanged: {
+        if (mainHealth < 0) {
+            mainHealth = 0;
+            return;
+        }
+        if (mainHealthMax > 0 && mainHealth > mainHealthMax)
+            mainHealth = mainHealthMax;
+    }
+
+    onMainHealthMaxChanged: {
+        if (mainHealthMax < 0)
+            mainHealthMax = 0;
+        if (mainHealth > mainHealthMax)
+            mainHealth = mainHealthMax;
+    }
 
     UI.GridShakeEffector {
         id: shakeEffector
@@ -1117,6 +1143,11 @@ Item {
         var deltaRow = row2 - row1;
         var deltaCol = column2 - column1;
 
+        if ((placementA || placementB) && normalizeStateName(currentState) !== "idle")
+            return false;
+        if ((placementA || placementB) && !BattleGridLogic.allEntriesIdleNoMissing(root))
+            return false;
+
         if (placementA && placementB && placementA.key !== placementB.key)
             return false;
 
@@ -1351,6 +1382,7 @@ Item {
                     continue;
 
                 instances.push(dragItem);
+                dragItem.enabled = playerControlled;
 
                 setWrapperAt(row, column, dragItem);
                 dragItem.startedMoving.connect(dragItem.entry.startedMoving)
