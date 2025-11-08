@@ -135,7 +135,7 @@ INSERT INTO defs VALUES(74,2,'function','handleHeroPlacementRequest(cardData, he
 INSERT INTO defs VALUES(75,2,'function','heroPlacementBoundsValid(grid, cardData, sceneX, sceneY)',NULL,'Checks whether the projected hero footprint fits entirely within the grid surface before allowing placement.');
 INSERT INTO defs VALUES(76,2,'function','finalizeHeroPlacement(grid, cardData, heroItem, placedHero, placement)','grid:Item, cardData:var, heroItem:Item, placedHero:Item, placement:var','Commits a hero to the grid, syncs runtime state, and triggers its placement activation.');
 INSERT INTO defs VALUES(77,2,'function','processLaunchDamageRewards(sourceGrid, damageResult)',NULL,'Routes destroyed-block energy and breach rewards back to the launching grid''s sidebar.');
-INSERT INTO defs VALUES(78,2,'function','refreshOpponentLoadout()',NULL,'Builds a fallback set of powerup cards for the opponent using whatever schema data is available, even if catalog entries are missing.');
+INSERT INTO defs VALUES(78,2,'function','refreshOpponentLoadout()',NULL,'Builds a random opponent loadout by shuffling the available powerup pool (builtin fallback included) so the top sidebar cards vary each start.');
 INSERT INTO defs VALUES(79,2,'function','safeString(value, fallback)',NULL,'Utility ensuring attacker-provided data always resolves to a non-empty string.');
 INSERT INTO defs VALUES(80,2,'function','normalizedPowerupRecord(sourceRecord, slotIndex, prefix)',NULL,'Sanitizes an arbitrary powerup payload into the minimal card structure expected by loadouts and sidebars.');
 INSERT INTO defs VALUES(81,2,'function','recordForSlot(records, slotIndex)',NULL,'Picks the best matching record for a slot regardless of whether the source array stores {slot,powerup} tuples or plain objects.');
@@ -156,7 +156,7 @@ INSERT INTO defs VALUES(95,13,'function','openMatchSetup()','','Activates the Ma
 INSERT INTO defs VALUES(96,13,'function','closeMatchSetup(preserveSelection)','preserveSelection','Destroys the MatchSetup overlay and optionally resets pending loadout data when the dialog is dismissed.');
 INSERT INTO defs VALUES(97,13,'function','beginDebugScene(loadout)','loadout','Closes MatchSetup, preserves the provided loadout, and spins up a DebugScene instance.');
 INSERT INTO defs VALUES(98,2,'property','property var providedLoadout','','Holds MatchSetup-selected cards supplied by MainMenuScene before normalization.');
-INSERT INTO defs VALUES(99,2,'function','applyProvidedLoadout(entries)','entries','Normalizes externally provided loadout entries and stores them in playerLoadout for the sidebar.');
+INSERT INTO defs VALUES(99,2,'function','applyProvidedLoadout(entries)','entries','Sanitizes the MatchSetup payload, confirms at least one selection exists, and stores the normalized results for the player sidebar.');
 INSERT INTO defs VALUES(100,6,'property','property bool interactive','','Toggles the card''s internal click area so parents like BattleCardSidebar can intercept drags.');
 INSERT INTO defs VALUES(101,15,'function','require_integer(value, label=''value'')','value,label','Validate that provided value contains only digits; emits fatal error with label when not.');
 INSERT INTO defs VALUES(102,15,'function','sql_collect(out_ref, sql)','out_ref,sql','Helper using sqlite3 to populate an array via nameref with query results.');
@@ -683,6 +683,27 @@ INSERT INTO defs VALUES(624,51,'function','findCandidateSwaps(matrix)','matrix:v
 INSERT INTO defs VALUES(625,51,'function','swapCreatesMatch(matrix, row1, column1, row2, column2)','matrix:var, row1:int, column1:int, row2:int, column2:int','Temporarily swaps two cells inside the working color grid and reports whether either axis now holds a valid run.');
 INSERT INTO defs VALUES(626,51,'function','hasLineMatchAt(matrix, row, column)','matrix:var, row:int, column:int','Counts contiguous like-colored cells around a coordinate horizontally and vertically to determine if it forms a run.');
 INSERT INTO defs VALUES(627,51,'signal','swapRequested(row1, column1, row2, column2)','row1:int, column1:int, row2:int, column2:int','Emitted when the AI selects an adjacent swap that should be executed on the controlled battle grid.');
+INSERT INTO defs VALUES(628,1,'function','markInitialFillPlaceholder(entry)','entry','Caches a block entrys original health and zeroes it for the initial fill pass so first-launch cascades are non-damaging.');
+INSERT INTO defs VALUES(629,1,'function','restoreInitialFillBlockHealth()','None','Brings zero-health placeholders back to life at 5 HP after the initial cascade and then kicks off health/sidebar resets for the rest of the match.');
+INSERT INTO defs VALUES(630,1,'function','finalizeInitialCascadeSetup()','None','Normalizes both grids after the zero-health opener by restoring health pools and clearing sidebar energy once the first fill cascade finishes.');
+INSERT INTO defs VALUES(631,1,'function','enforceInitialBattleHealth()','None','Sets mainHealth/mainHealthMax to the 2000-point starting pool for every battle grid once the opening cascade resolves.');
+INSERT INTO defs VALUES(632,1,'function','resetSidebarsActivationEnergy()','None','Asks the owning scene for every registered sidebar tied to participating grids and zeroes each cards activation energy.');
+INSERT INTO defs VALUES(633,1,'function','collectRelevantBattleGrids()','None','Builds a unique list of this grid plus any offense/defense grids exposed by the scene so shared resets can address every participant.');
+INSERT INTO defs VALUES(634,10,'function','resetAllCardEnergy()','None','Iterates every sidebar slot and calls resetEnergy on its card data so activation meters return to zero.');
+INSERT INTO defs VALUES(637,2,'function','shuffleRecords(records)','records','Returns a randomly shuffled copy of the available powerup records so opponent loadouts vary each match.');
+INSERT INTO defs VALUES(638,2,'function','cloneProvidedPowerup(record)','record','Produces a sanitized copy of a player-selected powerup so DebugScene can normalize MatchSetup data without referencing live QML objects.');
+INSERT INTO defs VALUES(639,2,'function','sanitizeProvidedLoadout(entries)','entries','Builds a slot-aligned array from MatchSetups payload, inserting deep-cloned records or nulls so downstream normalization always receives exactly four entries.');
+INSERT INTO defs VALUES(640,1,'function','isDefenseGrid()',NULL,'Returns true when the owning scene reports this grid as the active defense side so defense-only logic can branch.');
+INSERT INTO defs VALUES(641,1,'function','triggerDefenseExplosionWarning(damageAmount)','damageAmount:number','Pulses the shake effector with amplitude/duration scaled to the recorded damage when defending.');
+INSERT INTO defs VALUES(642,1,'function','flagEntryForDefenseExplosion(entry, damageAmount)','entry:object, damageAmount:number','Stores the pending damage amount on an entry so the corresponding block can schedule a proportional defense shake when it explodes.');
+INSERT INTO defs VALUES(643,1,'signal','gridDefeated(payload)','payload','Emitted once when the grid''s health reaches zero so scenes can trigger win conditions.');
+INSERT INTO defs VALUES(644,1,'function','evaluateGridDefeatState(triggerReason)','triggerReason:string','Clamps the defeat flag when health changes and triggers defeat announcements when health hits zero.');
+INSERT INTO defs VALUES(645,1,'function','announceGridDefeat(context)','context:object','Builds a defeat payload, emits gridDefeated, and notifies the owning scene exactly once per match.');
+INSERT INTO defs VALUES(646,2,'function','handleBattleGridDefeat(defeatedGrid, payload)','defeatedGrid:BattleGrid, payload:object','Resolves the current match when a grid reports zero health, computing the winner and storing the outcome message.');
+INSERT INTO defs VALUES(647,2,'function','finalizeMatchOutcome(summary)','summary:object','Stores the victory payload, updates the announcement text, and flips matchResolved to halt gameplay.');
+INSERT INTO defs VALUES(648,2,'function','haltActiveMatchSystems()',NULL,'Stops match-related timers and timers on both grids once a victory has been declared.');
+INSERT INTO defs VALUES(649,2,'function','getBattleGridOffense()',NULL,'Returns the attacking battle grid for the currently active player turn.');
+INSERT INTO defs VALUES(650,2,'function','getBattleGridDefense()',NULL,'Returns the defending battle grid for the currently inactive player turn.');
 CREATE TABLE refs (
   id INTEGER PRIMARY KEY,
   def_id INTEGER NOT NULL,
@@ -690,6 +711,14 @@ CREATE TABLE refs (
   FOREIGN KEY(def_id) REFERENCES defs(id),
   FOREIGN KEY(reference_def_id) REFERENCES defs(id)
 );
+INSERT INTO refs VALUES(1,357,649);
+INSERT INTO refs VALUES(2,599,649);
+INSERT INTO refs VALUES(3,599,73);
+INSERT INTO refs VALUES(4,632,73);
+INSERT INTO refs VALUES(5,633,649);
+INSERT INTO refs VALUES(6,633,650);
+INSERT INTO refs VALUES(7,640,650);
+INSERT INTO refs VALUES(8,645,646);
 CREATE TABLE changes (
   id INTEGER PRIMARY KEY,
   title TEXT NOT NULL,
@@ -707,6 +736,7 @@ INSERT INTO changes VALUES(8,'Expand wheel CLI for metadata','Add todo/changes/f
 INSERT INTO changes VALUES(9,'Audit files table for CMake/QML','Ensure every CMakeLists.txt and QML file is registered','complete');
 INSERT INTO changes VALUES(10,'Import legacy WHEEl data','Sync missing files/defs from original db','complete');
 INSERT INTO changes VALUES(11,'Battle grid shake feedback and energy payout',NULL,'in_progress');
+INSERT INTO changes VALUES(12,'Add powerup gating logs','DebugScene/BattleGrid instrumentation','in_progress');
 CREATE TABLE change_files (
   id INTEGER PRIMARY KEY,
   change_id INTEGER NOT NULL,
@@ -1378,6 +1408,30 @@ INSERT INTO change_defs VALUES(557,11,1,591,NULL);
 INSERT INTO change_defs VALUES(558,11,2,592,NULL);
 INSERT INTO change_defs VALUES(559,11,2,593,NULL);
 INSERT INTO change_defs VALUES(560,11,2,594,NULL);
+INSERT INTO change_defs VALUES(561,12,2,99,NULL);
+INSERT INTO change_defs VALUES(562,12,2,71,NULL);
+INSERT INTO change_defs VALUES(563,12,2,78,NULL);
+INSERT INTO change_defs VALUES(564,12,2,81,NULL);
+INSERT INTO change_defs VALUES(565,12,2,72,NULL);
+INSERT INTO change_defs VALUES(566,12,2,73,NULL);
+INSERT INTO change_defs VALUES(567,12,2,74,NULL);
+INSERT INTO change_defs VALUES(568,12,2,83,NULL);
+INSERT INTO change_defs VALUES(569,12,2,84,NULL);
+INSERT INTO change_defs VALUES(570,12,2,76,NULL);
+INSERT INTO change_defs VALUES(571,12,2,594,NULL);
+INSERT INTO change_defs VALUES(572,12,1,601,NULL);
+INSERT INTO change_defs VALUES(573,12,1,87,NULL);
+INSERT INTO change_defs VALUES(574,12,1,89,NULL);
+INSERT INTO change_defs VALUES(575,12,1,90,NULL);
+INSERT INTO change_defs VALUES(576,12,1,606,NULL);
+INSERT INTO change_defs VALUES(577,12,1,607,NULL);
+INSERT INTO change_defs VALUES(578,12,1,591,NULL);
+INSERT INTO change_defs VALUES(579,12,1,589,NULL);
+INSERT INTO change_defs VALUES(580,12,1,590,NULL);
+INSERT INTO change_defs VALUES(581,12,1,583,NULL);
+INSERT INTO change_defs VALUES(582,12,1,585,NULL);
+INSERT INTO change_defs VALUES(583,12,1,584,NULL);
+INSERT INTO change_defs VALUES(584,12,1,581,NULL);
 CREATE TABLE todo (
   id INTEGER PRIMARY KEY,
   change_id INTEGER NOT NULL,

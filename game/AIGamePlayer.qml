@@ -6,6 +6,7 @@ Item {
 
     property var battleGrid
     property var gameScene
+    property var battleCardSidebar
     property string controlledTurn: "top"
     property bool enabled: true
     property int planningDelay: 220

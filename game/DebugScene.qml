@@ -164,22 +164,28 @@ Engine.GameScene {
     }
 
     function applyProvidedLoadout(entries) {
-        if (!entries || !entries.length)
+        if (!entries || !entries.length) {
+            console.log("Powerup loadout gating: provided entries missing or empty");
             return false;
+        }
         playerLoadout = normalizeLoadout(entries, "player");
         return true;
     }
 
     function refreshPlayerLoadout() {
-        if (!powerupDatabase)
+        if (!powerupDatabase) {
+            console.log("Powerup loadout gating: powerupDatabase unavailable for player loadout");
             return;
+        }
         var records = powerupDatabase.fetchLoadout() || [];
         playerLoadout = normalizeLoadout(records, "player");
     }
 
     function refreshOpponentLoadout() {
-        if (!powerupDatabase)
+        if (!powerupDatabase) {
+            console.log("Powerup loadout gating: powerupDatabase unavailable for opponent loadout");
             return;
+        }
         var pool = powerupDatabase.fetchAllPowerups() || [];
         if (!pool.length && powerupDatabase.builtinPowerups)
             pool = powerupDatabase.builtinPowerups();
@@ -237,8 +243,10 @@ Engine.GameScene {
     }
 
     function recordForSlot(records, slotIndex) {
-        if (!records)
+        if (!records) {
+            console.log("Powerup loadout gating: record lookup failed because records argument is null");
             return null;
+        }
         if (slotIndex < records.length && records[slotIndex] && records[slotIndex].slot === undefined)
             return records[slotIndex];
         for (var i = 0; i < records.length; ++i) {
@@ -264,66 +272,110 @@ Engine.GameScene {
     }
 
     function registerSidebarForGrid(grid, sidebar) {
-        if (!grid || !sidebar || !grid.uuid)
+        if (!grid || !sidebar || !grid.uuid) {
+            console.log("BattleCardSidebar gating: failed to register sidebar because grid/sidebar/uuid missing", {
+                hasGrid: !!grid,
+                hasSidebar: !!sidebar,
+                gridUuid: grid && grid.uuid
+            });
             return;
+        }
         sidebarRegistry[grid.uuid] = sidebar;
     }
 
     function sidebarForGrid(grid) {
-        if (!grid || !grid.uuid)
+        if (!grid || !grid.uuid) {
+            console.log("BattleCardSidebar gating: sidebar lookup skipped due to invalid grid or uuid", {
+                hasGrid: !!grid
+            });
             return null;
-        return sidebarRegistry[grid.uuid] || null;
+        }
+        var sidebar = sidebarRegistry[grid.uuid] || null;
+        if (!sidebar)
+            console.log("BattleCardSidebar gating: no sidebar registered for grid", grid.uuid);
+        return sidebar;
     }
 
     function handleHeroPlacementRequest(targetGrid, cardData, heroItem, sceneX, sceneY) {
-        if (!cardData || !targetGrid)
+        if (!cardData || !targetGrid) {
+            console.log("BattleCardSidebar gating: missing cardData or targetGrid", {
+                hasCardData: !!cardData,
+                hasGrid: !!targetGrid
+            });
             return;
+        }
         if (!targetGrid.playerControlled) {
-            console.log("BattleCardSidebar: hero placement restricted to player grid");
+            console.log("BattleCardSidebar gating: hero placement restricted to player grid", targetGrid.uuid);
             return;
         }
         if (cardData.heroPlaced) {
-            console.log("BattleCardSidebar: card already placed");
+            console.log("BattleCardSidebar gating: card already placed", cardData.powerupUuid);
             return;
         }
         if (cardData.powerupCardHealth !== undefined && cardData.powerupCardHealth <= 0) {
-            console.log("BattleCardSidebar: card health depleted");
+            console.log("BattleCardSidebar gating: card health depleted", {
+                cardUuid: cardData.powerupUuid,
+                currentHealth: cardData.powerupCardHealth
+            });
             return;
         }
         var gridStateOk = targetGrid.normalizeStateName
                 ? targetGrid.normalizeStateName(targetGrid.currentState) === "idle"
                 : (targetGrid.currentState || "").toString().toLowerCase() === "idle";
-        if (!gridStateOk || !BattleGridLogic.allEntriesIdleNoMissing(targetGrid)) {
-            console.log("BattleCardSidebar: hero placement requires idle, fully populated grid");
+        var entriesIdle = BattleGridLogic.allEntriesIdleNoMissing(targetGrid);
+        if (!gridStateOk || !entriesIdle) {
+            console.log("BattleCardSidebar gating: hero placement requires idle, fully populated grid", {
+                gridState: targetGrid.currentState,
+                entriesIdle: entriesIdle
+            });
             return;
         }
         var placement = heroPlacementInfo(targetGrid, cardData, sceneX, sceneY);
         if (!placement.valid) {
-            console.log("BattleCardSidebar: hero placement rejected");
+            console.log("BattleCardSidebar gating: hero placement rejected because drop was out of bounds", placement);
             return;
         }
         if (typeof targetGrid.canPlaceHero === "function") {
             if (!targetGrid.canPlaceHero(cardData.powerupUuid, placement.row, placement.column, cardData.powerupHeroRowSpan, cardData.powerupHeroColSpan)) {
-                console.log("BattleCardSidebar: hero collision detected");
+                console.log("BattleCardSidebar gating: hero collision detected or slot unavailable", {
+                    cardUuid: cardData.powerupUuid,
+                    row: placement.row,
+                    column: placement.column
+                });
                 return;
             }
+        } else {
+            console.log("BattleCardSidebar gating: target grid missing canPlaceHero implementation", targetGrid.uuid);
         }
         var placedHero = spawnHeroOnGrid(targetGrid, cardData, placement);
-        if (!placedHero)
+        if (!placedHero) {
+            console.log("BattleCardSidebar gating: spawnHeroOnGrid failed", {
+                cardUuid: cardData.powerupUuid,
+                placement: placement
+            });
             return;
+        }
         finalizeHeroPlacement(targetGrid, cardData, heroItem, placedHero, placement);
     }
 
     function heroPlacementInfo(grid, cardData, sceneX, sceneY) {
-        if (!grid || sceneX === undefined || sceneY === undefined)
+        if (!grid || sceneX === undefined || sceneY === undefined) {
+            console.log("Hero placement gating: missing grid or coordinates for placement info", {
+                hasGrid: !!grid,
+                sceneX: sceneX,
+                sceneY: sceneY
+            });
             return { valid: false };
+        }
         var heroCols = Math.max(1, cardData.powerupHeroColSpan || 1);
         var heroRows = Math.max(1, cardData.powerupHeroRowSpan || 1);
         var heroWidth = heroCols * grid.cellW + Math.max(0, heroCols - 1) * grid.gapX;
         var heroHeight = heroRows * grid.cellH + Math.max(0, heroRows - 1) * grid.gapY;
         var localPoint = grid.mapFromGlobal(sceneX, sceneY);
-        if (!localPoint)
+        if (!localPoint) {
+            console.log("Hero placement gating: mapFromGlobal failed to resolve localPoint");
             return { valid: false };
+        }
         var gridWidth = grid.gridCols * grid.cellW + Math.max(0, grid.gridCols - 1) * grid.gapX;
         var gridHeight = grid.gridRows * grid.cellH + Math.max(0, grid.gridRows - 1) * grid.gapY;
         var gridLeft = grid.originX;
@@ -360,10 +412,18 @@ Engine.GameScene {
     }
 
     function spawnHeroOnGrid(grid, cardData, placement) {
-        if (!grid || !cardData || !placement || !placement.valid)
+        if (!grid || !cardData || !placement || !placement.valid) {
+            console.log("Hero placement gating: invalid arguments for spawnHeroOnGrid", {
+                hasGrid: !!grid,
+                hasCardData: !!cardData,
+                placementValid: placement && placement.valid
+            });
             return null;
-        if (!placedHeroComponent)
+        }
+        if (!placedHeroComponent) {
+            console.log("Hero placement gating: placedHeroComponent missing");
             return null;
+        }
         var hero = placedHeroComponent.createObject(grid, {
             previewMode: false,
             powerupName: cardData.powerupName,
@@ -378,8 +438,12 @@ Engine.GameScene {
             z: 40,
             visible: true
         });
-        if (!hero)
+        if (!hero) {
+            console.log("Hero placement gating: createObject failed to instantiate hero", {
+                cardUuid: cardData.powerupUuid
+            });
             return null;
+        }
         hero.cardData = cardData;
         hero.anchoredRow = placement.row;
         hero.anchoredColumn = placement.column;
@@ -387,8 +451,14 @@ Engine.GameScene {
     }
 
     function finalizeHeroPlacement(grid, cardData, heroItem, placedHero, placement) {
-        if (!grid || !cardData || !placement)
+        if (!grid || !cardData || !placement) {
+            console.log("Hero placement gating: finalizeHeroPlacement missing grid/cardData/placement", {
+                hasGrid: !!grid,
+                hasCardData: !!cardData,
+                hasPlacement: !!placement
+            });
             return;
+        }
         if (typeof cardData.resetEnergy === "function")
             cardData.resetEnergy();
         cardData.activationReady = false;
@@ -399,6 +469,12 @@ Engine.GameScene {
             placedHero.cardData = cardData;
         }
         if (grid && typeof grid.registerHeroPlacement === "function") {
+            console.log("Hero placement flow: invoking registerHeroPlacement", {
+                gridUuid: grid.uuid,
+                cardUuid: cardData.powerupUuid,
+                row: placement.row,
+                column: placement.column
+            });
             grid.registerHeroPlacement(
                         cardData.powerupUuid,
                         placedHero,
@@ -408,6 +484,9 @@ Engine.GameScene {
                         cardData.powerupHeroColSpan,
                         { cardUuid: cardData.powerupUuid, cardData: cardData });
         }
+        console.log("Hero placement flow: registerHeroPlacement complete, firing trigger", {
+            cardUuid: cardData.powerupUuid
+        });
         triggerPowerupActivation(cardData, { trigger: "placement", skipEnergyDrain: true, resetEnergy: true });
     }
 
@@ -456,35 +535,92 @@ Engine.GameScene {
     }
 
     function triggerPowerupActivation(cardData, options) {
-        if (!cardData)
+        if (!cardData) {
+            console.log("Powerup activation gating: missing cardData");
             return false;
+        }
         var sourceGrid = cardData.battleGrid || null;
-        if (!sourceGrid)
+        if (!sourceGrid) {
+            console.log("Powerup activation gating: card missing battleGrid binding", cardData.powerupUuid);
             return false;
-        if (!cardData.heroPlaced || !cardData.heroAlive)
+        }
+        if (!cardData.heroPlaced || !cardData.heroAlive) {
+            console.log("Powerup activation gating: hero not placed or already defeated", {
+                heroPlaced: cardData.heroPlaced,
+                heroAlive: cardData.heroAlive,
+                cardUuid: cardData.powerupUuid
+            });
             return false;
+        }
         var normalizedState = sourceGrid.normalizeStateName
                 ? sourceGrid.normalizeStateName(sourceGrid.currentState)
                 : (sourceGrid.currentState || "").toString().toLowerCase();
-        if (normalizedState !== "idle")
+        if (normalizedState !== "idle") {
+            console.log("Powerup activation gating: source grid not idle", {
+                gridUuid: sourceGrid.uuid,
+                state: sourceGrid.currentState
+            });
             return false;
-        if (!BattleGridLogic.allEntriesIdleNoMissing(sourceGrid))
+        }
+        if (!BattleGridLogic.allEntriesIdleNoMissing(sourceGrid)) {
+            console.log("Powerup activation gating: source grid entries not fully idle", sourceGrid.uuid);
             return false;
+        }
 
         var triggerInfo = options || {};
         var targetType = (cardData.powerupTarget || "Self").toString().toLowerCase();
         var targetGrid = targetType === "enemy" ? opposingGrid(sourceGrid) : sourceGrid;
-        if (!targetGrid)
+        if (!targetGrid) {
+            console.log("Powerup activation gating: target grid unavailable", {
+                targetType: targetType,
+                sourceUuid: sourceGrid.uuid
+            });
             return false;
+        }
 
         var amount = Math.max(0, Math.floor(cardData.powerupActualAmount || 0));
         var operation = (cardData.powerupOperation || "increase").toString().toLowerCase();
         var spec = cardData.powerupTargetSpec || "PlayerHealth";
 
+        console.log("Powerup activation flow: executing spec", JSON.stringify({
+            cardUuid: cardData.powerupUuid,
+            spec: spec,
+            targetType: targetType,
+            targetGridUuid: targetGrid.uuid,
+            amount: amount,
+            operation: operation
+        }));
+
+        var activationApplied = false;
+        function normalizeSpecArray(specData) {
+            if (!specData)
+                return [];
+            if (Array.isArray(specData))
+                return specData;
+            var coerced = [];
+            var length = specData.length !== undefined ? Number(specData.length) : NaN;
+            if (isFinite(length) && length > 0) {
+                for (var idx = 0; idx < length; ++idx) {
+                    if (specData[idx] !== undefined)
+                        coerced.push(specData[idx]);
+                }
+                return coerced;
+            }
+            for (var key in specData) {
+                if (specData.hasOwnProperty && !specData.hasOwnProperty(key))
+                    continue;
+                coerced.push(specData[key]);
+            }
+            if (coerced.length)
+                return coerced;
+            return [specData];
+        }
+
         switch (spec) {
         case "Blocks": {
             if (targetGrid.applyBlockDeltaList) {
-                var rawCells = Array.isArray(cardData.powerupTargetSpecData) ? cardData.powerupTargetSpecData : [];
+                var rawCells = normalizeSpecArray(cardData.powerupTargetSpecData);
+                console.log("Powerup activation flow: normalized block targets", JSON.stringify(rawCells));
                 var cells = [];
                 for (var i = 0; i < rawCells.length; ++i) {
                     var cell = rawCells[i];
@@ -503,21 +639,37 @@ Engine.GameScene {
                         column: Math.floor(numericColumn)
                     });
                 }
-                if (cells.length)
-                    targetGrid.applyBlockDeltaList(cells, amount, operation, { trigger: triggerInfo.trigger || "manual", sourceCard: cardData });
+                if (cells.length) {
+                    console.log("Powerup activation flow: dispatching block delta list", JSON.stringify({
+                        cardUuid: cardData.powerupUuid,
+                        cellCount: cells.length
+                    }));
+                    var results = targetGrid.applyBlockDeltaList(cells, amount, operation, { trigger: triggerInfo.trigger || "manual", sourceCard: cardData });
+                    console.log("Powerup activation flow: block delta results", JSON.stringify(results));
+                    activationApplied = results && results.length > 0;
+                } else {
+                    console.log("Powerup activation flow: no valid cells for block spec", JSON.stringify(cardData.powerupTargetSpecData));
+                }
             }
             break;
         }
         case "PlayerPowerupInGameCards": {
             if (targetGrid.applyHeroDeltaByColor) {
                 var colorFilter = cardData.powerupTargetSpecData || "";
-                targetGrid.applyHeroDeltaByColor(colorFilter, amount, operation, { trigger: triggerInfo.trigger || "manual", sourceCard: cardData });
+                var heroImpacts = targetGrid.applyHeroDeltaByColor(colorFilter, amount, operation, { trigger: triggerInfo.trigger || "manual", sourceCard: cardData });
+                console.log("Powerup activation flow: hero delta results", JSON.stringify(heroImpacts));
+                activationApplied = heroImpacts && heroImpacts.length > 0;
             }
             break;
         }
         case "PlayerHealth":
         default:
             adjustGridHealth(targetGrid, amount, operation);
+            console.log("Powerup activation flow: adjusted grid health", JSON.stringify({
+                gridUuid: targetGrid.uuid,
+                mainHealth: targetGrid.mainHealth
+            }));
+            activationApplied = true;
             break;
         }
 
@@ -528,6 +680,11 @@ Engine.GameScene {
             shouldResetEnergy = !!triggerInfo.skipEnergyDrain;
         if (shouldResetEnergy && typeof cardData.resetEnergy === "function")
             cardData.resetEnergy();
+        console.log("Powerup activation flow: activation completed", JSON.stringify({
+            cardUuid: cardData.powerupUuid,
+            spec: spec,
+            applied: activationApplied
+        }));
         return true;
     }
    /* Engine.GameDragItem {
@@ -872,6 +1029,7 @@ onItemDroppedNowhere: function(itemName) {
         anchors.bottom: battleGrid_bottom.bottom
         anchors.leftMargin: 72
         onHeroPlacementRequested: function(cardData, heroItem, sceneX, sceneY) {
+            console.log("Hero Placement Requested",JSON.stringify(cardData), heroItem, sceneX, sceneY);
             handleHeroPlacementRequest(battleGrid_bottom, cardData, heroItem, sceneX, sceneY)
         }
         Component.onCompleted: registerSidebarForGrid(battleGrid_bottom, playerSidebar)

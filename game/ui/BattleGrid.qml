@@ -359,11 +359,21 @@ Item {
     }
 
     function synchronizeHeroBlockState(entry, newState) {
-        if (!entry || !entry.heroBindingKey)
+        if (!entry || !entry.heroBindingKey) {
+         //   console.log("Hero gating [synchronizeHeroBlockState]: entry missing or not linked to a hero", {
+//                hasEntry: !!entry,
+  //              heroBindingKey: entry && entry.heroBindingKey
+  //          });
             return;
+        }
         var placement = heroPlacementForKey(entry.heroBindingKey);
-        if (!placement || placement.__stateSync)
+        if (!placement || placement.__stateSync) {
+            console.log("Hero gating [synchronizeHeroBlockState]: placement unavailable or state sync active", {
+                hasPlacement: !!placement,
+                stateSync: placement && placement.__stateSync
+            });
             return;
+        }
         placement.__stateSync = true;
         var normalizedState = normalizeStateName(newState);
         var records = placement.boundBlocks || [];
@@ -388,21 +398,42 @@ Item {
     }
 
     function synchronizeHeroBlockHealth(entry) {
-        if (!entry || entry.__heroHealthSyncGuard)
+        if (!entry) {
+            console.log("Hero gating [synchronizeHeroBlockHealth]: entry missing");
             return;
+        }
+        if (entry.__heroHealthSyncGuard) {
+            var guardKey = entry.heroBindingKey || entry.powerupHeroUuid || null;
+            console.log("Hero gating [synchronizeHeroBlockHealth]: guard active, skipping sync", guardKey);
+            return;
+        }
         var bindingKey = entry.heroBindingKey || entry.powerupHeroUuid || null;
-        if (!bindingKey)
+        if (!bindingKey) {
+            console.log("Hero gating [synchronizeHeroBlockHealth]: entry lacks binding key");
             return;
+        }
         var placement = heroPlacementForKey(bindingKey);
-        if (!placement || (placement.__healthSyncCount && placement.__healthSyncCount > 0))
+        if (!placement || (placement.__healthSyncCount && placement.__healthSyncCount > 0)) {
+            console.log("Hero gating [synchronizeHeroBlockHealth]: placement missing or health sync busy", {
+                hasPlacement: !!placement,
+                healthSyncCount: placement && placement.__healthSyncCount
+            });
             return;
-        if (!placement.cardData)
+        }
+        if (!placement.cardData) {
+            console.log("Hero gating [synchronizeHeroBlockHealth]: placement missing card data", bindingKey);
             return;
+        }
 
         var heroHealth = Math.max(0, placement.cardData.heroCurrentHealth || 0);
         var blockHealth = Math.max(0, entry.health || 0);
-        if (blockHealth === heroHealth)
+        if (blockHealth === heroHealth) {
+            console.log("Hero gating [synchronizeHeroBlockHealth]: block health already aligned", {
+                key: bindingKey,
+                heroHealth: heroHealth
+            });
             return;
+        }
 
         entry.__heroHealthSyncGuard = true;
         placement.__healthSyncCount = (placement.__healthSyncCount || 0) + 1;
@@ -417,20 +448,33 @@ Item {
     }
 
     function synchronizeHeroBlockPosition(entry, isRowMutation) {
-        if (!entry || entry.__heroPositionGuard)
+        if (!entry || entry.__heroPositionGuard) {
+            console.log("Hero gating [synchronizeHeroBlockPosition]: entry missing or guard active", {
+                hasEntry: !!entry,
+                guard: entry && entry.__heroPositionGuard
+            });
             return;
+        }
         var bindingKey = entry.heroBindingKey || entry.powerupHeroUuid || null;
-        if (!bindingKey)
+        if (!bindingKey) {
+            console.log("Hero gating [synchronizeHeroBlockPosition]: missing binding key for entry");
             return;
+        }
         var placement = heroPlacementForKey(bindingKey);
-        if (!placement)
+        if (!placement) {
+            console.log("Hero gating [synchronizeHeroBlockPosition]: placement not found for binding key", bindingKey);
             return;
+        }
 
         if (placement.__positionSyncCount && placement.__positionSyncCount > 0) {
             if (isRowMutation)
                 entry.__previousGridRow = entry.row;
             else
                 entry.__previousGridColumn = entry.column;
+            console.log("Hero gating [synchronizeHeroBlockPosition]: position sync already running", {
+                key: bindingKey,
+                syncCount: placement.__positionSyncCount
+            });
             return;
         }
 
@@ -447,8 +491,10 @@ Item {
             entry.__previousGridColumn = entry.column;
         }
 
-        if (deltaRow === 0 && deltaColumn === 0)
+        if (deltaRow === 0 && deltaColumn === 0) {
+            console.log("Hero gating [synchronizeHeroBlockPosition]: no delta detected");
             return;
+        }
 
         entry.__heroPositionGuard = true;
         placement.__positionSyncCount = (placement.__positionSyncCount || 0) + 1;
@@ -469,8 +515,10 @@ Item {
     }
 
     function applyHeroPlacementOffset(placement, deltaRow, deltaColumn) {
-        if (!placement)
+        if (!placement) {
+            console.log("Hero gating [applyHeroPlacementOffset]: placement missing");
             return false;
+        }
 
         var steps = [];
         if (deltaRow !== 0) {
@@ -491,6 +539,10 @@ Item {
         for (var i = 0; i < steps.length; ++i) {
             var step = steps[i];
             if (!attemptHeroShift(placement, step.dr, step.dc)) {
+                console.log("Hero gating [applyHeroPlacementOffset]: attemptHeroShift blocked", {
+                    stepRow: step.dr,
+                    stepCol: step.dc
+                });
                 for (var ri = executed.length - 1; ri >= 0; --ri) {
                     var revert = executed[ri];
                     attemptHeroShift(placement, -revert.dr, -revert.dc);
@@ -545,12 +597,29 @@ Item {
     }
 
     function heroAreaWithinBounds(row, column, rowSpan, colSpan) {
-        if (row < 0 || column < 0)
+        if (row < 0 || column < 0) {
+            console.log("Hero gating [heroAreaWithinBounds]: negative coordinates", {
+                row: row,
+                column: column
+            });
             return false;
-        if ((row + rowSpan) > gridRows)
+        }
+        if ((row + rowSpan) > gridRows) {
+            console.log("Hero gating [heroAreaWithinBounds]: row span exceeds grid", {
+                row: row,
+                rowSpan: rowSpan,
+                gridRows: gridRows
+            });
             return false;
-        if ((column + colSpan) > gridCols)
+        }
+        if ((column + colSpan) > gridCols) {
+            console.log("Hero gating [heroAreaWithinBounds]: column span exceeds grid", {
+                column: column,
+                colSpan: colSpan,
+                gridCols: gridCols
+            });
             return false;
+        }
         return true;
     }
 
@@ -565,8 +634,13 @@ Item {
     }
 
     function heroAreasOverlap(a, b) {
-        if (!a || !b)
+        if (!a || !b) {
+            console.log("Hero gating [heroAreasOverlap]: missing area data", {
+                hasA: !!a,
+                hasB: !!b
+            });
             return false;
+        }
         var aBottom = a.row + a.rowSpan - 1;
         var aRight = a.column + a.colSpan - 1;
         var bBottom = b.row + b.rowSpan - 1;
@@ -577,10 +651,19 @@ Item {
     }
 
     function canPlaceHero(cardUuid, row, column, rowSpan, colSpan) {
-        if (!heroAreaWithinBounds(row, column, rowSpan, colSpan))
+        if (!heroAreaWithinBounds(row, column, rowSpan, colSpan)) {
+            console.log("Hero gating [canPlaceHero]: requested area out of bounds", {
+                row: row,
+                column: column,
+                rowSpan: rowSpan,
+                colSpan: colSpan
+            });
             return false;
-        if (hasHeroForCard(cardUuid))
+        }
+        if (hasHeroForCard(cardUuid)) {
+            console.log("Hero gating [canPlaceHero]: hero already placed for card", cardUuid);
             return false;
+        }
         var placement = { row: row, column: column, rowSpan: rowSpan, colSpan: colSpan };
         for (var key in heroPlacements) {
             if (!heroPlacements.hasOwnProperty(key))
@@ -588,8 +671,14 @@ Item {
             var existing = heroPlacements[key];
             if (!existing)
                 continue;
-            if (heroAreasOverlap(existing, placement))
+            if (heroAreasOverlap(existing, placement)) {
+                console.log("Hero gating [canPlaceHero]: requested area overlaps existing hero", {
+                    existingKey: key,
+                    row: existing.row,
+                    column: existing.column
+                });
                 return false;
+            }
         }
         return true;
     }
@@ -622,27 +711,46 @@ Item {
 
     function setHeroCellKey(row, column, key) {
         ensureHeroCellMap();
-        if (row < 0 || row >= gridRows || column < 0 || column >= gridCols)
+        if (row < 0 || row >= gridRows || column < 0 || column >= gridCols) {
+            console.log("Hero gating [setHeroCellKey]: coordinates out of bounds", {
+                row: row,
+                column: column,
+                gridRows: gridRows,
+                gridCols: gridCols
+            });
             return;
+        }
         heroCellMap[row][column] = key || null;
     }
 
     function heroKeyAt(row, column) {
         ensureHeroCellMap();
-        if (row < 0 || row >= gridRows || column < 0 || column >= gridCols)
+        if (row < 0 || row >= gridRows || column < 0 || column >= gridCols) {
+            console.log("Hero gating [heroKeyAt]: lookup out of bounds", {
+                row: row,
+                column: column
+            });
             return null;
+        }
         return heroCellMap[row][column] || null;
     }
 
     function heroPlacementForKey(key) {
-        if (!key)
+        if (!key) {
+            console.log("Hero gating [heroPlacementForKey]: key missing");
             return null;
-        return heroPlacements[key] || null;
+        }
+        var placement = heroPlacements[key] || null;
+        if (!placement)
+            console.log("Hero gating [heroPlacementForKey]: placement not found", key);
+        return placement;
     }
 
     function heroPlacementForWrapper(wrapper) {
-        if (!wrapper)
+        if (!wrapper) {
+            console.log("Hero gating [heroPlacementForWrapper]: wrapper missing");
             return null;
+        }
         var key = null;
         if (wrapper.entry && wrapper.entry.heroBindingKey)
             key = wrapper.entry.heroBindingKey;
@@ -650,6 +758,8 @@ Item {
             key = wrapper.property("heroBindingKey");
         if (!key && wrapper.heroBindingKey !== undefined)
             key = wrapper.heroBindingKey;
+        if (!key)
+            console.log("Hero gating [heroPlacementForWrapper]: unable to resolve hero binding key");
         return heroPlacementForKey(key);
     }
 
@@ -663,8 +773,10 @@ Item {
     }
 
     function unlinkWrapperFromHero(wrapper) {
-        if (!wrapper)
+        if (!wrapper) {
+            console.log("Hero gating [unlinkWrapperFromHero]: wrapper missing");
             return;
+        }
         if (wrapper.entry) {
             wrapper.entry.heroBindingKey = null;
             wrapper.entry.heroLinked = false;
@@ -691,8 +803,13 @@ Item {
     }
 
     function linkWrapperToHero(wrapper, placement, row, column) {
-        if (!wrapper || !placement)
+        if (!wrapper || !placement) {
+            console.log("Hero gating [linkWrapperToHero]: wrapper or placement missing", {
+                hasWrapper: !!wrapper,
+                hasPlacement: !!placement
+            });
             return;
+        }
         var heroKey = placement.key;
         var relRow = row - placement.row;
         var relCol = column - placement.column;
@@ -719,11 +836,22 @@ Item {
             wrapper.entry.__heroHealthSyncGuard = false;
             wrapper.entry.__heroPositionGuard = false;
         }
+        console.log("Hero placement flow: wrapper linked to hero", {
+            heroKey: heroKey,
+            row: row,
+            column: column,
+            wrapperId: wrapper.objectName || wrapper
+        });
     }
 
     function attachWrapperToHeroCell(placement, row, column, wrapper) {
-        if (!placement || !wrapper)
+        if (!placement || !wrapper) {
+            console.log("Hero gating [attachWrapperToHeroCell]: placement or wrapper missing", {
+                hasPlacement: !!placement,
+                hasWrapper: !!wrapper
+            });
             return;
+        }
         linkWrapperToHero(wrapper, placement, row, column);
         if (!placement.boundBlocks)
             placement.boundBlocks = [];
@@ -765,12 +893,16 @@ Item {
     }
 
     function detachWrapperFromHeroCell(placement, row, column, wrapper) {
-        if (!placement)
+        if (!placement) {
+            console.log("Hero gating [detachWrapperFromHeroCell]: placement missing");
             return;
+        }
         if (wrapper)
             unlinkWrapperFromHero(wrapper);
-        if (!placement.boundBlocks || !placement.boundBlocks.length)
+        if (!placement.boundBlocks || !placement.boundBlocks.length) {
+            console.log("Hero gating [detachWrapperFromHeroCell]: no bound blocks to update", placement.key);
             return;
+        }
         for (var i = placement.boundBlocks.length - 1; i >= 0; --i) {
             var record = placement.boundBlocks[i];
             if (!record)
@@ -783,8 +915,10 @@ Item {
     }
 
     function clearHeroPlacementCells(placement) {
-        if (!placement)
+        if (!placement) {
+            console.log("Hero gating [clearHeroPlacementCells]: placement missing");
             return;
+        }
         ensureHeroCellMap();
         if (placement.coverageCells && placement.coverageCells.length) {
             for (var c = 0; c < placement.coverageCells.length; ++c) {
@@ -815,8 +949,17 @@ Item {
     }
 
     function bindHeroPlacement(placement) {
-        if (!placement)
+        if (!placement) {
+            console.log("Hero gating [bindHeroPlacement]: placement missing");
             return;
+        }
+        console.log("Hero placement flow: bindHeroPlacement start", {
+            key: placement.key,
+            row: placement.row,
+            column: placement.column,
+            rowSpan: placement.rowSpan,
+            colSpan: placement.colSpan
+        });
         clearHeroPlacementCells(placement);
         var areaCells = heroCellsForArea(placement.row, placement.column, placement.rowSpan, placement.colSpan);
         placement.coverageCells = [];
@@ -841,11 +984,21 @@ Item {
             placement.heroItem.anchoredColumn = placement.column;
             placement.heroItem.heroState = "idle";
         }
+        console.log("Hero placement flow: bindHeroPlacement complete", {
+            key: placement.key,
+            coverageCount: placement.coverageCells.length,
+            boundBlocks: placement.boundBlocks.length
+        });
     }
 
     function refreshHeroBlockHealth(placement) {
-        if (!placement || !placement.boundBlocks)
+        if (!placement || !placement.boundBlocks) {
+            console.log("Hero gating [refreshHeroBlockHealth]: placement missing or no bound blocks", {
+                hasPlacement: !!placement,
+                hasBoundBlocks: placement && placement.boundBlocks
+            });
             return;
+        }
         var health = placement.cardData ? Math.max(0, placement.cardData.heroCurrentHealth) : 0;
         for (var i = 0; i < placement.boundBlocks.length; ++i) {
             var record = placement.boundBlocks[i];
@@ -862,8 +1015,10 @@ Item {
     }
 
     function handleHeroDefeat(placement, context) {
-        if (!placement)
+        if (!placement) {
+            console.log("Hero gating [handleHeroDefeat]: placement missing");
             return;
+        }
         var key = placement.key;
         var cardData = placement.cardData || null;
         var previousHealth = cardData ? Math.max(0, cardData.heroCurrentHealth) : 0;
@@ -897,11 +1052,20 @@ Item {
 
     function applyHeroHealingAt(row, column, amount, context) {
         var placement = heroPlacementForCell(row, column);
-        if (!placement || !placement.cardData)
+        if (!placement || !placement.cardData) {
+            console.log("Hero gating [applyHeroHealingAt]: placement or card data missing", {
+                row: row,
+                column: column
+            });
             return { applied: 0, destroyed: false, key: null };
+        }
         var heal = Math.max(0, Math.floor(amount));
-        if (heal <= 0)
+        if (heal <= 0) {
+            console.log("Hero gating [applyHeroHealingAt]: heal amount non-positive", {
+                amount: amount
+            });
             return { applied: 0, destroyed: false, key: placement.key };
+        }
         var previous = placement.cardData.heroCurrentHealth;
         placement.cardData.applyHeroHealing(heal);
         var applied = Math.max(0, placement.cardData.heroCurrentHealth - previous);
@@ -911,11 +1075,20 @@ Item {
 
     function applyDamageToHeroCell(row, column, amount, context) {
         var placement = heroPlacementForCell(row, column);
-        if (!placement || !placement.cardData)
+        if (!placement || !placement.cardData) {
+            console.log("Hero gating [applyDamageToHeroCell]: placement or card data missing", {
+                row: row,
+                column: column
+            });
             return { applied: 0, destroyed: false, key: null };
+        }
         var dmg = Math.max(0, Math.floor(amount));
-        if (dmg <= 0)
+        if (dmg <= 0) {
+            console.log("Hero gating [applyDamageToHeroCell]: damage amount non-positive", {
+                amount: amount
+            });
             return { applied: 0, destroyed: false, key: placement.key };
+        }
         var previous = placement.cardData.heroCurrentHealth;
         placement.cardData.applyHeroDamage(dmg);
         var applied = Math.max(0, previous - placement.cardData.heroCurrentHealth);
@@ -929,11 +1102,22 @@ Item {
 
     function applyBlockDelta(row, column, amount, operation, context) {
         var entry = getBlockEntryAt(row, column);
-        if (!entry)
+        if (!entry) {
+            console.log("Powerup grid effect: applyBlockDelta skipped, no entry at cell", JSON.stringify({
+                row: row,
+                column: column
+            }));
             return { affected: false };
+        }
         var delta = Math.max(0, Math.floor(amount));
-        if (delta <= 0)
+        if (delta <= 0) {
+            console.log("Powerup grid effect: applyBlockDelta delta non-positive", JSON.stringify({
+                row: row,
+                column: column,
+                amount: amount
+            }));
             return { affected: false };
+        }
         var placement = heroPlacementForCell(row, column);
         if (placement && placement.cardData) {
             if (operation && operation.toString().toLowerCase() === "increase")
@@ -955,36 +1139,56 @@ Item {
             entry.health = 0;
             entry.energyAmount = Math.max(entry.energyAmount || 0, previousHealth);
             entry.blockState = "waitAndExplode";
-            return { affected: true, destroyed: true, hero: false, health: 0, energyAmount: entry.energyAmount };
+            var result = { affected: true, destroyed: true, hero: false, health: 0, energyAmount: entry.energyAmount };
+            console.log("Powerup grid effect: block destroyed", JSON.stringify(Object.assign({ row: row, column: column }, result)));
+            return result;
         }
-        return { affected: true, destroyed: false, hero: false, health: entry.health };
+        var resultAlive = { affected: true, destroyed: false, hero: false, health: entry.health };
+        console.log("Powerup grid effect: block health updated", JSON.stringify(Object.assign({ row: row, column: column }, resultAlive)));
+        return resultAlive;
     }
 
     function applyBlockDeltaList(cells, amount, operation, context) {
         var results = [];
-        if (!Array.isArray(cells))
+        if (!Array.isArray(cells)) {
+            console.log("Powerup grid effect: applyBlockDeltaList called with invalid cells payload", JSON.stringify(cells));
             return results;
+        }
+        console.log("Powerup grid effect: applying deltas to cells", JSON.stringify({
+            count: cells.length,
+            amount: amount,
+            operation: operation
+        }));
         for (var i = 0; i < cells.length; ++i) {
             var cell = cells[i];
             if (!cell)
                 continue;
             var row = cell.row !== undefined ? cell.row : cell.r;
             var column = cell.column !== undefined ? cell.column : cell.c;
-            if (row === undefined || column === undefined)
+            if (row === undefined || column === undefined) {
+                console.log("Powerup grid effect: skipped cell missing row/column", JSON.stringify(cell));
                 continue;
+            }
             results.push(Object.assign({ row: row, column: column }, applyBlockDelta(row, column, amount, operation, context)));
         }
+        console.log("Powerup grid effect: delta list results", JSON.stringify(results));
         return results;
     }
 
     function applyHeroDeltaByColor(color, amount, operation, context) {
-        if (!color)
+        if (!color) {
+            console.log("Hero gating [applyHeroDeltaByColor]: color filter missing");
             return [];
+        }
         var keyColor = color.toString().toLowerCase();
         var op = operation && operation.toString().toLowerCase() === "increase" ? "increase" : "decrease";
         var delta = Math.max(0, Math.floor(amount));
-        if (delta <= 0)
+        if (delta <= 0) {
+            console.log("Hero gating [applyHeroDeltaByColor]: delta non-positive", {
+                amount: amount
+            });
             return [];
+        }
         var impacts = [];
         for (var key in heroPlacements) {
             if (!heroPlacements.hasOwnProperty(key))
@@ -1004,16 +1208,28 @@ Item {
     }
 
     function attemptHeroShift(placement, deltaRow, deltaCol) {
-        if (!placement)
+        if (!placement) {
+            console.log("Hero gating [attemptHeroShift]: placement missing");
             return false;
+        }
         placement.__positionSyncCount = (placement.__positionSyncCount || 0) + 1;
         try {
-            if ((Math.abs(deltaRow) + Math.abs(deltaCol)) !== 1)
+            if ((Math.abs(deltaRow) + Math.abs(deltaCol)) !== 1) {
+                console.log("Hero gating [attemptHeroShift]: move delta invalid", {
+                    deltaRow: deltaRow,
+                    deltaCol: deltaCol
+                });
                 return false;
+            }
             var newRow = placement.row + deltaRow;
             var newCol = placement.column + deltaCol;
-            if (!heroAreaWithinBounds(newRow, newCol, placement.rowSpan, placement.colSpan))
+            if (!heroAreaWithinBounds(newRow, newCol, placement.rowSpan, placement.colSpan)) {
+                console.log("Hero gating [attemptHeroShift]: new area out of bounds", {
+                    newRow: newRow,
+                    newCol: newCol
+                });
                 return false;
+            }
 
             var currentCells = heroCellsForArea(placement.row, placement.column, placement.rowSpan, placement.colSpan);
             var newCells = heroCellsForArea(newRow, newCol, placement.rowSpan, placement.colSpan);
@@ -1042,8 +1258,10 @@ Item {
                     entering.push(cellNew);
             }
 
-            if (entering.length !== leaving.length)
+            if (entering.length !== leaving.length) {
+                console.log("Hero gating [attemptHeroShift]: mismatch between entering and leaving cells");
                 return false;
+            }
 
             var incomingWrappers = [];
             for (var e = 0; e < entering.length; ++e) {
@@ -1051,12 +1269,20 @@ Item {
                 var incomingWrapper = getBlockWrapper(enteringCell.row, enteringCell.column);
                 if (incomingWrapper) {
                     var otherPlacement = heroPlacementForWrapper(incomingWrapper);
-                    if (otherPlacement && otherPlacement.key !== placement.key)
+                    if (otherPlacement && otherPlacement.key !== placement.key) {
+                        console.log("Hero gating [attemptHeroShift]: incoming wrapper belongs to another hero", {
+                            otherKey: otherPlacement && otherPlacement.key
+                        });
                         return false;
+                    }
                 } else {
                     var occupyingKey = heroKeyAt(enteringCell.row, enteringCell.column);
-                    if (occupyingKey && occupyingKey !== placement.key)
+                    if (occupyingKey && occupyingKey !== placement.key) {
+                        console.log("Hero gating [attemptHeroShift]: target cell occupied by another hero", {
+                            occupyingKey: occupyingKey
+                        });
                         return false;
+                    }
                 }
                 incomingWrappers.push({ cell: enteringCell, wrapper: incomingWrapper });
             }
@@ -1169,6 +1395,13 @@ Item {
     }
 
     function registerHeroPlacement(cardUuid, heroItem, row, column, rowSpan, colSpan, metadata) {
+        console.log("Hero placement flow: registerHeroPlacement called", {
+            cardUuid: cardUuid,
+            row: row,
+            column: column,
+            rowSpan: rowSpan,
+            colSpan: colSpan
+        });
         var key = heroPlacementKey(cardUuid);
         var meta = metadata || {};
         var cardData = meta.cardData || (heroItem && heroItem.cardData) || null;
@@ -1194,14 +1427,23 @@ Item {
             cardData.battleGrid = root;
             cardData.markHeroPlacedState(true);
         }
+        console.log("Hero placement flow: placement stored and card state updated", {
+            key: key,
+            hasCardData: !!cardData,
+            battleGridUuid: cardData && cardData.battleGrid ? cardData.battleGrid.uuid : null,
+            heroPlaced: cardData && cardData.heroPlaced
+        });
         bindHeroPlacement(placement);
         refreshHeroBlockHealth(placement);
+        console.log("Hero placement flow: registerHeroPlacement finished", key);
     }
 
     function releaseHeroPlacement(cardUuid, options) {
         var key = heroPlacementKey(cardUuid);
-        if (!heroPlacements.hasOwnProperty(key))
+        if (!heroPlacements.hasOwnProperty(key)) {
+            console.log("Hero gating [releaseHeroPlacement]: no placement exists for key", key);
             return;
+        }
         var placement = heroPlacements[key];
         clearHeroPlacementCells(placement);
         if (placement && placement.cardData && (!options || !options.preserveCardState))
