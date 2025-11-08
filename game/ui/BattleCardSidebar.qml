@@ -378,17 +378,23 @@ Item {
             updateDragEnabled(slot)
         }
     }
-    function requestHeroActivation(slot) {
+    function requestHeroActivation(slot, options) {
+        var ignoreInteractions = options && options.ignoreInteractions;
         if (!slot || !slot.cardData)
-            return
-        if (!interactionsEnabled)
-            return
+            return false;
+        if (!interactionsEnabled && !ignoreInteractions)
+            return false;
         if (!slot.cardData.heroPlaced)
-            return
+            return false;
         if (!slot.cardData.heroAlive)
-            return
+            return false;
         if (!slot.cardData.activationReady)
-            return
-        powerupActivationRequested(slot.cardData)
+            return false;
+        powerupActivationRequested(slot.cardData);
+        return true;
+    }
+
+    function forceHeroActivation(slot) {
+        return requestHeroActivation(slot, { ignoreInteractions: true });
     }
 }
