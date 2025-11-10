@@ -37,8 +37,21 @@ Engine.GameScene {
         pendingDebugLoadout = loadout || []
         closeMatchSetup(true)
 
+        if (debugScene) {
+            debugScene.destroy()
+            debugScene = null
+        }
+
         debugScene = debugSceneComponent.createObject(mainMenuSceneRoot, { providedLoadout: loadout,  z: 5 })
         debugScene.anchors.fill = mainMenuSceneRoot
+        if (debugScene && debugScene.battleOutcomeDismissed) {
+            const createdScene = debugScene
+            createdScene.battleOutcomeDismissed.connect(function(result) {
+                if (mainMenuSceneRoot.debugScene === createdScene)
+                    mainMenuSceneRoot.debugScene = null
+                createdScene.destroy()
+            })
+        }
        // debugSceneLoader.active = true
     }
 

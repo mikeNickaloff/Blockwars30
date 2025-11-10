@@ -54,7 +54,7 @@ File shortcuts:
       List all files with ids and descriptions ordered by relpath.
   files search TERM...
       Keyword search (AND) over file paths and descriptions.
-  files add --relpath=PATH [--description=TEXT]
+  files add --relpath=PATH|--file=PATH [--description=TEXT]
       Insert a new file row; description defaults to NULL when omitted.
   files del [--file_id=ID | --file=PATH]
       Delete a file row by id or matching relpath.
@@ -1723,10 +1723,12 @@ files_add() {
     case "$1" in
       --relpath=*) relpath="${1#*=}"; shift;;
       --relpath)   relpath="$2"; shift 2;;
+      --file=*)    relpath="${1#*=}"; shift;;
+      --file)      relpath="$2"; shift 2;;
       --description=*) description="${1#*=}"; shift;;
       --description)   description="$2"; shift 2;;
       --help|-h)
-        fatal "usage: $PROG files add --relpath=PATH [--description=TEXT]"
+        fatal "usage: $PROG files add --relpath=PATH|--file=PATH [--description=TEXT]"
         ;;
       --) shift; break;;
       -*)
@@ -1738,7 +1740,7 @@ files_add() {
     esac
   done
 
-  [[ -n "$relpath" ]] || fatal "files add requires --relpath"
+  [[ -n "$relpath" ]] || fatal "files add requires --relpath/--file"
   local relpath_sql
   relpath_sql="$(sql_quote "$relpath")"
   local description_sql

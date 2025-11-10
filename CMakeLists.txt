@@ -69,6 +69,9 @@ QML_FILES
 QML_FILES game/scripts/battlegrid.js
 QML_FILES game/AIGamePlayer.qml
 QML_FILES game/ui/PowerupIconSprite.qml
+QML_FILES game/BattleOutcomeScene.qml
+QML_FILES game/BattleWinnerScene.qml
+QML_FILES game/BattleLoserScene.qml
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.

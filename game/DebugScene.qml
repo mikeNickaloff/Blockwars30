@@ -7,6 +7,7 @@ import "ui" as UI
 import "data" as Data
 import "factory.js" as Factory
 import "scripts/battlegrid.js" as BattleGridLogic
+import "." as Scenes
 Engine.GameScene {
     id: debugScene
     anchors.fill: parent
@@ -20,6 +21,11 @@ Engine.GameScene {
     property var providedLoadout: []
     property var sidebarRegistry: ({})
     readonly property int loadoutSlots: 4
+    property bool battleResolved: false
+    property string battleOutcome: ""
+    property Item outcomeScene: null
+
+    signal battleOutcomeDismissed(string result)
 
     Data.PowerupDatabase {
         id: powerupDatabase
@@ -44,8 +50,8 @@ Engine.GameScene {
         }
     }
     onCurrentTurnChanged: {
-        if (currentTurn === "top") { turnBanner.bannerText = "Opponent's Turn"; battleGrid_bottom.opacity = 0.65; battleGrid_top.opacity = 1.0;}
-        if (currentTurn === "bottom") { turnBanner.bannerText = "Your turn"; battleGrid_bottom.opacity = 1.0; battleGrid_top.opacity = 0.65; }
+        if (currentTurn === "top") { turnBanner.bannerText = "Opponent's Turn"; battleGrid_bottom.opacity = 0.5; battleGrid_top.opacity = 1.0;}
+        if (currentTurn === "bottom") { turnBanner.bannerText = "Your turn"; battleGrid_bottom.opacity = 1.0; battleGrid_top.opacity = 0.5; }
         turnBanner.opacity = 1.0
         handleTurnSwitchTimer.running = true;
         handleTurnSwitchTimer.restart();
@@ -62,6 +68,8 @@ Engine.GameScene {
     }
 
     function receiveBattleGridLaunchPayload(payload) {
+        if (battleResolved)
+            return;
         if (!payload || !payload.battleGrid)
             return;
         //    console.log("received launch payload", JSON.stringify(payload))
@@ -83,6 +91,8 @@ Engine.GameScene {
     }
 
     function forwardBlockLaunchEndPoint(payload, endX, endY) {
+        if (battleResolved)
+            return;
         if (!payload || !payload.uuid)
             return;
 
@@ -179,6 +189,80 @@ Engine.GameScene {
             targetGrid.informOpponentPostSwapCascadeStatus(payload);
     }
 
+    function handleGridDefeat(payload) {
+        if (battleResolved)
+            return;
+
+        battleResolved = true;
+        lockBattlefield();
+
+        var defeatedGrid = payload && payload.grid ? payload.grid : null;
+        if (!defeatedGrid && payload && payload.uuid) {
+            if (battleGrid_top && battleGrid_top.uuid === payload.uuid)
+                defeatedGrid = battleGrid_top;
+            else if (battleGrid_bottom && battleGrid_bottom.uuid === payload.uuid)
+                defeatedGrid = battleGrid_bottom;
+        }
+        if (!defeatedGrid) {
+            defeatedGrid = (payload && payload.playerControlled) ? battleGrid_bottom : battleGrid_top;
+        }
+        var outcome = (defeatedGrid === battleGrid_top) ? "win" : "lose";
+        battleOutcome = outcome;
+        presentBattleOutcome(outcome);
+    }
+
+    function lockBattlefield() {
+        turnsLeft = 0;
+        if (postSwapCascadeCheckTimer.running)
+            postSwapCascadeCheckTimer.stop();
+        if (launchTimer.running)
+            launchTimer.stop();
+        handleTurnSwitchTimer.stop();
+
+        if (battleGrid_top) {
+            battleGrid_top.playerControlled = false;
+            battleGrid_top.postSwapCascading = false;
+        }
+        if (battleGrid_bottom) {
+            battleGrid_bottom.playerControlled = false;
+            battleGrid_bottom.postSwapCascading = false;
+        }
+
+        if (playerSidebar)
+            playerSidebar.interactionsEnabled = false;
+        if (opponentSidebar)
+            opponentSidebar.interactionsEnabled = false;
+        if (topGridAi)
+            topGridAi.enabled = false;
+    }
+
+    function presentBattleOutcome(result) {
+        if (outcomeScene) {
+            outcomeScene.destroy();
+            outcomeScene = null;
+        }
+        var component = result === "win" ? battleWinnerComponent : battleLoserComponent;
+        if (!component)
+            return;
+        outcomeScene = component.createObject(debugScene);
+        if (!outcomeScene)
+            return;
+        outcomeScene.anchors.fill = debugScene;
+        outcomeScene.z = 200;
+        if (outcomeScene.closeRequested)
+            outcomeScene.closeRequested.connect(handleOutcomeClose);
+    }
+
+    function handleOutcomeClose() {
+        if (outcomeScene) {
+            if (outcomeScene.closeRequested)
+                outcomeScene.closeRequested.disconnect(handleOutcomeClose);
+            outcomeScene.destroy();
+            outcomeScene = null;
+        }
+        battleOutcomeDismissed(battleOutcome);
+    }
+
     onProvidedLoadoutChanged: {
         if (!applyProvidedLoadout(providedLoadout) && !playerLoadout.length)
             refreshPlayerLoadout();
@@ -208,8 +292,8 @@ Engine.GameScene {
             return;
         }
         var pool = powerupDatabase.fetchAllPowerups() || [];
-        if (!pool.length && powerupDatabase.builtinPowerups)
-            pool = powerupDatabase.builtinPowerups();
+       // if (!pool.length && powerupDatabase.builtinPowerups)
+        //    pool = powerupDatabase.builtinPowerups();
         var selections = [];
         var cursor = 0;
         for (var i = 0; i < loadoutSlots; ++i) {
@@ -1128,6 +1212,9 @@ Engine.GameScene {
             function onInformPostSwapCascadeStatus(payload) {
                 distributePostSwapCascade(payload);
             }
+            function onHealthDepleted(payload) {
+                handleGridDefeat(payload);
+            }
         }
 
         Connections {
@@ -1141,6 +1228,9 @@ Engine.GameScene {
             function onInformPostSwapCascadeStatus(payload) {
                 distributePostSwapCascade(payload);
             }
+            function onHealthDepleted(payload) {
+                handleGridDefeat(payload);
+            }
         }
 
 
@@ -1151,6 +1241,16 @@ Engine.GameScene {
 
 
 
+
+        Component {
+            id: battleWinnerComponent
+            Scenes.BattleWinnerScene { }
+        }
+
+        Component {
+            id: battleLoserComponent
+            Scenes.BattleLoserScene { }
+        }
 
         Component {
             id: dragComp

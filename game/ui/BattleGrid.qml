@@ -23,6 +23,7 @@ Item {
     signal distributedBlockLaunchPayload(var payload)
     signal informBlockLaunchEndPoint(var payload, var endX, var endY)
     signal informPostSwapCascadeStatus(var payload)
+    signal healthDepleted(var payload)
 
     // Grid configuration.
     property int gridCols: 6
@@ -69,6 +70,7 @@ Item {
     property var __launchRelayRegistered: false
     property var heroPlacements: ({})
     property var heroCellMap: []
+    property bool defeatBroadcasted: false
 
     onPlayerControlledChanged: {
         for (var idx = 0; idx < instances.length; ++idx) {
@@ -81,10 +83,23 @@ Item {
     onMainHealthChanged: {
         if (mainHealth < 0) {
             mainHealth = 0;
-            return;
         }
         if (mainHealthMax > 0 && mainHealth > mainHealthMax)
             mainHealth = mainHealthMax;
+
+        if (mainHealth === 0) {
+            if (!defeatBroadcasted) {
+                defeatBroadcasted = true;
+                healthDepleted({
+                                    uuid: uuid,
+                                    grid: root,
+                                    playerControlled: playerControlled,
+                                    gameScene: gameScene
+                                });
+            }
+        } else if (defeatBroadcasted) {
+            defeatBroadcasted = false;
+        }
     }
 
     onMainHealthMaxChanged: {

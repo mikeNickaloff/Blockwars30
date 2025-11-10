@@ -57,6 +57,9 @@ INSERT INTO files VALUES(49,'game/ui/BattleGridHealthBar.qml','Displays a health
 INSERT INTO files VALUES(50,'game/scripts/battlegrid.js','Shared battle grid helper logic used by BattleGrid for match detection and state utilities.');
 INSERT INTO files VALUES(51,'game/AIGamePlayer.qml','AI helper that watches battle grid state and requests match-producing swaps automatically.');
 INSERT INTO files VALUES(52,'game/ui/PowerupIconSprite.qml','Reusable sprite-sheet viewport that clips the card icon area to a single 30x30 frame from cardicons.png.');
+INSERT INTO files VALUES(53,'game/BattleOutcomeScene.qml','Overlay scene that presents battle results with messaging and an action button.');
+INSERT INTO files VALUES(54,'game/BattleWinnerScene.qml','Specialized outcome scene that congratulates the player on victory.');
+INSERT INTO files VALUES(55,'game/BattleLoserScene.qml','Specialized outcome scene that informs the player of defeat.');
 CREATE TABLE defs (
   id INTEGER PRIMARY KEY,
   file_id INTEGER NOT NULL,
@@ -726,6 +729,10 @@ INSERT INTO defs VALUES(668,50,'function','generateMatchFreeMatrix(grid, palette
 INSERT INTO defs VALUES(669,21,'property','property int spriteAnimationDisplaySize',NULL,'Controls the scaled width/height applied to launch and gain sprite animations.');
 INSERT INTO defs VALUES(670,4,'property','property int powerupIcon',NULL,'Numeric index (0-24) into the card icon sprite sheet used by cards, editors, and runtime serialization.');
 INSERT INTO defs VALUES(671,52,'component','PowerupIconSprite',NULL,'Item-based sprite sheet viewport exposing iconIndex, frameSize, and sheet dimensions for card icon previews.');
+INSERT INTO defs VALUES(672,1,'signal','signal healthDepleted(var payload)',NULL,'Emitted the first time grid health reaches zero so parent scenes can trigger victory or defeat handling.');
+INSERT INTO defs VALUES(673,2,'signal','signal battleOutcomeDismissed(string result)',NULL,'Raised after the outcome overlay is acknowledged so the main menu can tear down the DebugScene.');
+INSERT INTO defs VALUES(674,2,'function','handleGridDefeat(payload)','payload','Centralized handler that freezes gameplay, determines the winner, and shows the outcome scene once a grid health depletion signal fires.');
+INSERT INTO defs VALUES(675,53,'signal','signal closeRequested()',NULL,'Notifies parents that the player dismissed the outcome overlay and follow-up navigation can proceed.');
 CREATE TABLE refs (
   id INTEGER PRIMARY KEY,
   def_id INTEGER NOT NULL,
