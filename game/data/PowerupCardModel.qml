@@ -173,6 +173,7 @@ Data.PowerupItem {
         powerupCardColor = record.powerupCardColor || "blue"
         powerupHeroRowSpan = record.powerupHeroRowSpan || 1
         powerupHeroColSpan = record.powerupHeroColSpan || 1
+        powerupIcon = record.powerupIcon !== undefined ? record.powerupIcon : 0
         dragLocked = record.dragLocked || false
         resetHeroVitals()
         updateEnergyRequirement()
@@ -194,6 +195,7 @@ Data.PowerupItem {
             powerupCardColor: powerupCardColor,
             powerupHeroRowSpan: powerupHeroRowSpan,
             powerupHeroColSpan: powerupHeroColSpan,
+            powerupIcon: powerupIcon,
             dragLocked: dragLocked
         }
     }

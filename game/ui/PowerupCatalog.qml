@@ -51,7 +51,8 @@ Item {
                 powerupIsCustom: !!record.powerupIsCustom,
                 powerupCardColor: record.powerupCardColor || "blue",
                 powerupHeroRowSpan: record.powerupHeroRowSpan || 1,
-                powerupHeroColSpan: record.powerupHeroColSpan || 1
+                powerupHeroColSpan: record.powerupHeroColSpan || 1,
+                powerupIcon: record.powerupIcon || 0
             })
         }
     }
@@ -87,6 +88,7 @@ Item {
             powerupOperation: model.powerupOperation
             powerupIsCustom: model.powerupIsCustom
             powerupCardColor: model.powerupCardColor
+            powerupIcon: model.powerupIcon
             onActivated: function(uuid) {
                 powerupChosen({
                     powerupUuid: uuid || powerupUuid,
@@ -101,7 +103,8 @@ Item {
                     powerupCardEnergyRequired: powerupCardEnergyRequired,
                     powerupCardColor: powerupCardColor,
                     powerupHeroRowSpan: powerupHeroRowSpan,
-                    powerupHeroColSpan: powerupHeroColSpan
+                    powerupHeroColSpan: powerupHeroColSpan,
+                    powerupIcon: powerupIcon
                 })
             }
         }

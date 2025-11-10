@@ -22,6 +22,7 @@ Item {
     property var health: 5
     property var cachedHealth: 5
     property int energyAmount: 0
+    property int spriteAnimationDisplaySize: 40
 
     property Component launchComponent: blockLaunchComponent
     property Component idleComponent: blockIdleComponent
@@ -42,6 +43,7 @@ Item {
     property int __previousGridColumn: -1
 property var __battleGridWrapper
 property bool __battleGridSignalRegistered: false
+    property bool hasLaunched: false
     signal blockDestroyed(var itemName)
     signal modifiedBlockGridCell()
     signal blockKilled()
@@ -76,8 +78,16 @@ property bool __battleGridSignalRegistered: false
     }
     onBlockStateChanged: {
         console.log("block state set to",blockState);
+        if (hasLaunched == false) {
         if (blockState == "launch") {
-            blockLoader.sourceComponent = launchComponent;
+           launchDelayTimer.running = true;
+            launchDelayTimer.restart();
+            hasLaunched = true;
+
+
+        }
+        } else {
+
         }
         if (blockState == "explode") {
             blockLoader.sourceComponent = explodeComponent;
@@ -96,11 +106,13 @@ property bool __battleGridSignalRegistered: false
             blockLoader.sourceComponent = idleComponent;
             energyAmount = 0;
         }
+        if (!hasLaunched) {
         if (blockState == "gain") {
             blockLoader.sourceComponent = gainComponent;
         }
         if (blockState == "gainCooldown") {
             blockLoader.sourceComponent = gainCooldownComponent;
+        }
         }
     }
     Timer {
@@ -126,15 +138,32 @@ property bool __battleGridSignalRegistered: false
             blockState = "explode"
         }
     }
+    Timer {
+        id: launchDelayTimer
+        running: false
+        repeat: false
+        interval: 50
+        triggeredOnStart: false
+        onTriggered: {
+
+            blockLoader.sourceComponent = launchComponent;
+        }
+    }
 
     Component {
         id: blockLaunchComponent
         Engine.GameSpriteSheetItem {
+            anchors.fill: undefined
+            anchors.centerIn: parent
+            transformOrigin: Item.Center
             spriteSheetFile: blockLaunchSpriteSheet()
             gameScene: blockRoot.gameScene
             itemName: blockRoot.itemName
             frameWidth: 64
             frameHeight: 64
+            width: frameWidth
+            height: frameHeight
+            scale: blockRoot.spriteAnimationDisplaySize / frameWidth
             frameCount: 5
             frameDuration: 60
             loops: 1
@@ -147,11 +176,17 @@ property bool __battleGridSignalRegistered: false
     Component {
         id: blockGainComponent
         Engine.GameSpriteSheetItem {
+            anchors.fill: undefined
+            anchors.centerIn: parent
+            transformOrigin: Item.Center
             spriteSheetFile: blockLaunchSpriteSheet()
             gameScene: blockRoot.gameScene
             itemName: blockRoot.itemName
             frameWidth: 64
             frameHeight: 64
+            width: frameWidth
+            height: frameHeight
+            scale: blockRoot.spriteAnimationDisplaySize / frameWidth
             frameCount: 3
             frameDuration: 125
             loops: 1
@@ -172,6 +207,7 @@ property bool __battleGridSignalRegistered: false
             frameHeight: 64
             frameCount: 3
             frameDuration: 125
+             scale: blockRoot.spriteAnimationDisplaySize / frameWidth
             loops: 1
             reverse: true
             onAnimationEndCallback: function(itemName) {

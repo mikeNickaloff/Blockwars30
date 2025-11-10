@@ -3,6 +3,7 @@ import QtQuick.Controls 2.15
 import QtQuick.Layouts
 
 import "../data" as Data
+import "." as UI
 
 Item {
     id: card
@@ -39,6 +40,7 @@ Item {
     property alias powerupCardColor: powerup.powerupCardColor
     property alias powerupHeroRowSpan: powerup.powerupHeroRowSpan
     property alias powerupHeroColSpan: powerup.powerupHeroColSpan
+    property alias powerupIcon: powerup.powerupIcon
     property bool interactive: true
     property var runtimeData: null
     readonly property real runtimeEnergyProgress: runtimeData && runtimeData.energyProgress !== undefined
@@ -71,6 +73,7 @@ Item {
         powerup.powerupCardColor = record.powerupCardColor || "blue"
         powerup.powerupHeroRowSpan = record.powerupHeroRowSpan || powerup.powerupHeroRowSpan
         powerup.powerupHeroColSpan = record.powerupHeroColSpan || powerup.powerupHeroColSpan
+        powerup.powerupIcon = record.powerupIcon !== undefined ? record.powerupIcon : 0
         powerup.updateEnergyRequirement()
     }
 
@@ -216,32 +219,23 @@ Item {
 
     Component {
         id: cardIcon
-        Rectangle {
-            anchors.top: parent.top
-            readonly property real iconDim: Math.min(parent.width, parent.height) * 0.25
-            width: iconDim
-            height: iconDim * 1.5
-            radius: iconDim * 0.3
-            color: "#101622"
-            border.width: Math.max(1, iconDim * 0.1)
-            border.color: cardColorHex()
-            Column {
+        Item {
+            anchors.fill: parent
+            readonly property real iconDim: Math.min(width, height) * 0.6
+            Rectangle {
                 anchors.centerIn: parent
-                spacing: iconDim * 0.1
-                Rectangle {
-                    width: iconDim * 0.65
-                    height: iconDim
-                    radius: iconDim * 0.15
-                    border.width: Math.max(1, iconDim * 0.08)
-                    border.color: cardColorHex()
-                    color: "transparent"
-                }
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: qsTr("Card")
-                    font.pixelSize: Math.max(8, iconDim * 0.3)
-                    color: "#e0e0e0"
-                }
+                width: iconDim * 1.1
+                height: iconDim * 1.1
+                radius: width * 0.2
+                color: "#101622"
+                border.width: Math.max(1, width * 0.08)
+                border.color: cardColorHex()
+            }
+            UI.PowerupIconSprite {
+                anchors.centerIn: parent
+                width: iconDim
+                height: iconDim
+                iconIndex: powerup.powerupIcon
             }
         }
     }

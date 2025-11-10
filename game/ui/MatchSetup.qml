@@ -114,7 +114,8 @@ Item {
             powerupCardEnergyRequired: record.powerupCardEnergyRequired || 0,
             powerupCardColor: record.powerupCardColor || "blue",
             powerupHeroRowSpan: record.powerupHeroRowSpan || 1,
-            powerupHeroColSpan: record.powerupHeroColSpan || 1
+            powerupHeroColSpan: record.powerupHeroColSpan || 1,
+            powerupIcon: record.powerupIcon || 0
         }
 
         if (slots[selectedSlot])
@@ -207,6 +208,7 @@ Item {
             property string powerupCardColor: "blue"
             property int powerupHeroRowSpan: 1
             property int powerupHeroColSpan: 1
+            property int powerupIcon: 0
             property alias card: slotCard
             property alias frame: slotFrame
 
@@ -229,6 +231,7 @@ Item {
                     powerupCardColor = "blue"
                     powerupHeroRowSpan = 1
                     powerupHeroColSpan = 1
+                    powerupIcon = 0
                     slotCard.applyRecord({
                         powerupUuid: "",
                         powerupName: "",
@@ -242,7 +245,8 @@ Item {
                         powerupCardEnergyRequired: 0,
                         powerupCardColor: "blue",
                         powerupHeroRowSpan: 1,
-                        powerupHeroColSpan: 1
+                        powerupHeroColSpan: 1,
+                        powerupIcon: 0
                     })
                 } else {
                     hasPowerup = true
@@ -259,6 +263,7 @@ Item {
                     powerupCardColor = record.powerupCardColor || "blue"
                     powerupHeroRowSpan = record.powerupHeroRowSpan || 1
                     powerupHeroColSpan = record.powerupHeroColSpan || 1
+                    powerupIcon = record.powerupIcon || 0
                     slotCard.applyRecord(record)
                 }
             }
@@ -290,6 +295,7 @@ Item {
                     powerupCardColor: slotRoot.powerupCardColor
                     powerupHeroRowSpan: slotRoot.powerupHeroRowSpan
                     powerupHeroColSpan: slotRoot.powerupHeroColSpan
+                    powerupIcon: slotRoot.powerupIcon
                 }
 
                 Column {

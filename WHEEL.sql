@@ -56,6 +56,7 @@ INSERT INTO files VALUES(48,'game/ui/GridShakeEffector.qml','Battle grid shake e
 INSERT INTO files VALUES(49,'game/ui/BattleGridHealthBar.qml','Displays a health progress bar synced to a battle grid''s main health.');
 INSERT INTO files VALUES(50,'game/scripts/battlegrid.js','Shared battle grid helper logic used by BattleGrid for match detection and state utilities.');
 INSERT INTO files VALUES(51,'game/AIGamePlayer.qml','AI helper that watches battle grid state and requests match-producing swaps automatically.');
+INSERT INTO files VALUES(52,'game/ui/PowerupIconSprite.qml','Reusable sprite-sheet viewport that clips the card icon area to a single 30x30 frame from cardicons.png.');
 CREATE TABLE defs (
   id INTEGER PRIMARY KEY,
   file_id INTEGER NOT NULL,
@@ -704,6 +705,27 @@ INSERT INTO defs VALUES(647,2,'function','finalizeMatchOutcome(summary)','summar
 INSERT INTO defs VALUES(648,2,'function','haltActiveMatchSystems()',NULL,'Stops match-related timers and timers on both grids once a victory has been declared.');
 INSERT INTO defs VALUES(649,2,'function','getBattleGridOffense()',NULL,'Returns the attacking battle grid for the currently active player turn.');
 INSERT INTO defs VALUES(650,2,'function','getBattleGridDefense()',NULL,'Returns the defending battle grid for the currently inactive player turn.');
+INSERT INTO defs VALUES(651,2,'function','attemptHeroPlacementAtCell(grid, cardData, row, column)','grid:Item, cardData:var, row:int, column:int','Programmatically spawns a powerup hero at the requested grid cell when the grid is idle, bypassing drag gestures for AI placement.');
+INSERT INTO defs VALUES(652,10,'function','forceHeroActivation(slot)','slot:var','Bypasses interaction gating to trigger a charged hero card''s powerup, used by AI control flows.');
+INSERT INTO defs VALUES(653,51,'function','attemptPowerupActions()',NULL,'Checks the sidebar for deployable or activatable powerup heroes and performs one action before planning swaps.');
+INSERT INTO defs VALUES(654,51,'function','tryPlaceHeroSlot(slot)','slot:var','Attempts up to heroPlacementRetries random placements for a charged but undeployed hero card.');
+INSERT INTO defs VALUES(655,51,'function','tryActivateHeroSlot(slot)','slot:var','Fires a placed hero''s ability when charged, using sidebar helpers or falling back to the scene trigger.');
+INSERT INTO defs VALUES(656,51,'function','cardReadyForActivation(card)','card:var','Utility predicate used by the AI to confirm a hero card is placed, alive, and fully charged.');
+INSERT INTO defs VALUES(657,51,'function','randomInt(maxInclusive)','maxInclusive:int','Returns a random integer between 0 and the provided inclusive upper bound, clamping invalid ranges to zero.');
+INSERT INTO defs VALUES(658,1,'member','readonly property int initialBattleHealthTarget','initialBattleHealthTarget','Baseline health total applied to both mainHealth and mainHealthMax when the grid enters init.');
+INSERT INTO defs VALUES(659,50,'function','randomPaletteColor(palette)','palette','Returns a random block color from the supplied palette, defaulting to the four standard hues when none are provided.');
+INSERT INTO defs VALUES(660,50,'function','createsHorizontalRun(rowColors, column, color)','rowColors, column, color','Checks whether inserting a color at the requested column would produce a 3+ horizontal run.');
+INSERT INTO defs VALUES(661,50,'function','createsVerticalRun(matrix, row, column, color)','matrix, row, column, color','Detects whether stacking a color at row/column forms a vertical 3+ chain within the matrix.');
+INSERT INTO defs VALUES(662,50,'function','selectAlternateColor(matrix, row, column, palette, previousColor)','matrix, row, column, palette, previousColor','Rerolls a color choice while avoiding immediate horizontal or vertical matches around the target cell.');
+INSERT INTO defs VALUES(663,50,'function','buildMatchSafeMatrix(grid, palette)','grid, palette','Seeds a raw color matrix for the supplied grid while skipping hero cells and avoiding immediate matches.');
+INSERT INTO defs VALUES(664,50,'function','rerollRowMatches(matrix, palette)','matrix, palette','Scans each row string (e.g., via join().indexOf(redredred)) and rerolls offending cells to remove 3+ runs.');
+INSERT INTO defs VALUES(665,50,'function','rerollColumnMatches(matrix, palette)','matrix, palette','Reassigns colors in vertical runs of three or more until the column no longer contains a match.');
+INSERT INTO defs VALUES(666,50,'function','matrixHasMatches(matrix)','matrix','Returns true when any horizontal or vertical sequence of three like colors exists within the provided matrix.');
+INSERT INTO defs VALUES(667,50,'function','scrubMatrixMatches(matrix, palette)','matrix, palette','Loops through rows and columns rerolling colors until no match-3 sequences remain.');
+INSERT INTO defs VALUES(668,50,'function','generateMatchFreeMatrix(grid, palette)','grid, palette','Produces a 6x6 color layout seeded randomly and sanitized so BattleGrid init begins without any match-3 runs.');
+INSERT INTO defs VALUES(669,21,'property','property int spriteAnimationDisplaySize',NULL,'Controls the scaled width/height applied to launch and gain sprite animations.');
+INSERT INTO defs VALUES(670,4,'property','property int powerupIcon',NULL,'Numeric index (0-24) into the card icon sprite sheet used by cards, editors, and runtime serialization.');
+INSERT INTO defs VALUES(671,52,'component','PowerupIconSprite',NULL,'Item-based sprite sheet viewport exposing iconIndex, frameSize, and sheet dimensions for card icon previews.');
 CREATE TABLE refs (
   id INTEGER PRIMARY KEY,
   def_id INTEGER NOT NULL,
@@ -737,6 +759,7 @@ INSERT INTO changes VALUES(9,'Audit files table for CMake/QML','Ensure every CMa
 INSERT INTO changes VALUES(10,'Import legacy WHEEl data','Sync missing files/defs from original db','complete');
 INSERT INTO changes VALUES(11,'Battle grid shake feedback and energy payout',NULL,'in_progress');
 INSERT INTO changes VALUES(12,'Add powerup gating logs','DebugScene/BattleGrid instrumentation','in_progress');
+INSERT INTO changes VALUES(13,'Battle grid 2000 health + match-free init','Ensure both BattleGridHealthBars start at 2000 health and seed init grids without match-3 sequences.','completed');
 CREATE TABLE change_files (
   id INTEGER PRIMARY KEY,
   change_id INTEGER NOT NULL,
@@ -1432,6 +1455,29 @@ INSERT INTO change_defs VALUES(581,12,1,583,NULL);
 INSERT INTO change_defs VALUES(582,12,1,585,NULL);
 INSERT INTO change_defs VALUES(583,12,1,584,NULL);
 INSERT INTO change_defs VALUES(584,12,1,581,NULL);
+INSERT INTO change_defs VALUES(585,12,2,651,NULL);
+INSERT INTO change_defs VALUES(586,12,10,652,NULL);
+INSERT INTO change_defs VALUES(587,12,10,578,NULL);
+INSERT INTO change_defs VALUES(588,12,51,653,NULL);
+INSERT INTO change_defs VALUES(589,12,51,654,NULL);
+INSERT INTO change_defs VALUES(590,12,51,655,NULL);
+INSERT INTO change_defs VALUES(591,12,51,656,NULL);
+INSERT INTO change_defs VALUES(592,12,51,657,NULL);
+INSERT INTO change_defs VALUES(593,13,1,349,NULL);
+INSERT INTO change_defs VALUES(594,13,1,343,NULL);
+INSERT INTO change_defs VALUES(595,13,1,380,NULL);
+INSERT INTO change_defs VALUES(596,13,1,631,NULL);
+INSERT INTO change_defs VALUES(597,13,1,658,NULL);
+INSERT INTO change_defs VALUES(598,13,50,659,NULL);
+INSERT INTO change_defs VALUES(599,13,50,660,NULL);
+INSERT INTO change_defs VALUES(600,13,50,661,NULL);
+INSERT INTO change_defs VALUES(601,13,50,662,NULL);
+INSERT INTO change_defs VALUES(602,13,50,663,NULL);
+INSERT INTO change_defs VALUES(603,13,50,664,NULL);
+INSERT INTO change_defs VALUES(604,13,50,665,NULL);
+INSERT INTO change_defs VALUES(605,13,50,666,NULL);
+INSERT INTO change_defs VALUES(606,13,50,667,NULL);
+INSERT INTO change_defs VALUES(607,13,50,668,NULL);
 CREATE TABLE todo (
   id INTEGER PRIMARY KEY,
   change_id INTEGER NOT NULL,

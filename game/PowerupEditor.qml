@@ -136,6 +136,7 @@ Engine.GameScene {
         editingPowerup.powerupCardColor = record.powerupCardColor || "blue"
         editingPowerup.powerupHeroRowSpan = record.powerupHeroRowSpan || 1
         editingPowerup.powerupHeroColSpan = record.powerupHeroColSpan || 1
+        editingPowerup.powerupIcon = record.powerupIcon !== undefined ? record.powerupIcon : 0
         editingPowerup.updateEnergyRequirement()
     }
 
@@ -158,6 +159,7 @@ Engine.GameScene {
         editingPowerup.powerupCardColor = "blue"
         editingPowerup.powerupHeroRowSpan = 1
         editingPowerup.powerupHeroColSpan = 1
+        editingPowerup.powerupIcon = 0
         editingPowerup.updateEnergyRequirement()
     }
 
@@ -184,7 +186,8 @@ Engine.GameScene {
             powerupIsCustom: editingPowerup.powerupIsCustom,
             powerupCardColor: editingPowerup.powerupCardColor,
             powerupHeroRowSpan: editingPowerup.powerupHeroRowSpan,
-            powerupHeroColSpan: editingPowerup.powerupHeroColSpan
+            powerupHeroColSpan: editingPowerup.powerupHeroColSpan,
+            powerupIcon: editingPowerup.powerupIcon
         }
     }
 
@@ -353,6 +356,7 @@ Engine.GameScene {
                         powerupCardColor: editingPowerup.powerupCardColor
                         powerupHeroRowSpan: editingPowerup.powerupHeroRowSpan
                         powerupHeroColSpan: editingPowerup.powerupHeroColSpan
+                        powerupIcon: editingPowerup.powerupIcon
                     }
 
                     ColumnLayout {
@@ -404,6 +408,26 @@ Engine.GameScene {
                         onCurrentIndexChanged: {
                             if (currentIndex >= 0 && currentIndex < cardColorOptions.length)
                                 editingPowerup.powerupCardColor = cardColorOptions[currentIndex].value
+                        }
+                    }
+
+                    Label { text: qsTr("Powerup Icon") }
+                    RowLayout {
+                        spacing: 8
+                        UI.PowerupIconSprite {
+                            Layout.preferredWidth: 64
+                            Layout.preferredHeight: 64
+                            width: 64
+                            height: 64
+                            iconIndex: editingPowerup.powerupIcon
+                        }
+                        Button {
+                            text: ">"
+                            onClicked: editingPowerup.powerupIcon = (editingPowerup.powerupIcon + 1) % 25
+                        }
+                        Label {
+                            text: qsTr("Icon %1").arg(editingPowerup.powerupIcon + 1)
+                            color: "#b0bec5"
                         }
                     }
 

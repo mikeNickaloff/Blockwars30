@@ -38,12 +38,13 @@ Item {
     property var instances: []
     property int blockSequence: 0
     property string launchDirection: "down"
-    readonly property var blockPalette: ["red", "blue", "green", "yellow"]
+    readonly property var blockPalette: ["red", "green", "yellow", "blue"]
     readonly property string blockIdPrefix: "grid_block"
+    readonly property int initialBattleHealthTarget: 2000
 
     property string uuid: Factory.uid("battleGrid")
-    property int mainHealthMax: 100
-    property int mainHealth: mainHealthMax
+    property int mainHealthMax: initialBattleHealthTarget
+    property int mainHealth: initialBattleHealthTarget
     property bool postSwapCascading: false
     property var launchSequence: []
     property int launchSequenceIndex: 0
@@ -91,6 +92,13 @@ Item {
             mainHealthMax = 0;
         if (mainHealth > mainHealthMax)
             mainHealth = mainHealthMax;
+    }
+
+    function enforceInitialBattleHealth() {
+        if (mainHealthMax !== initialBattleHealthTarget)
+            mainHealthMax = initialBattleHealthTarget;
+        if (mainHealth !== initialBattleHealthTarget)
+            mainHealth = initialBattleHealthTarget;
     }
 
     UI.GridShakeEffector {
@@ -225,7 +233,9 @@ Item {
             updateBlockScenePositions();
             break;
         case "init":
-            fillGrid();
+            enforceInitialBattleHealth();
+            var seededMatrix = BattleGridLogic.generateMatchFreeMatrix(root, blockPalette);
+            fillGrid(seededMatrix);
             requestState("compact");
             break;
         default:
@@ -1337,7 +1347,7 @@ Item {
         return { row: -1, column: -1 };
     }
 
-    function fillGrid() {
+    function fillGrid(initialColorMatrix) {
 
         ensureMatrix();
         const fillDescending = normalizeStateName(launchDirection) === "up";
@@ -1356,7 +1366,13 @@ Item {
                     continue;
                 if (getBlockWrapper(row, column))
                     continue;
-                var nextBlockColor = pools[column].getNextBlockColor()
+                var nextBlockColor = initialColorMatrix && initialColorMatrix[row]
+                        ? initialColorMatrix[row][column]
+                        : null;
+                if (!nextBlockColor && pools[column] && typeof pools[column].getNextBlockColor === "function")
+                    nextBlockColor = pools[column].getNextBlockColor();
+                if (!nextBlockColor && blockPalette && blockPalette.length > 0)
+                    nextBlockColor = blockPalette[Math.floor(Math.random() * blockPalette.length)];
 
                 const pos = cellPosition(row, column);
                 const dragItem = Factory.createBlock(
@@ -1710,6 +1726,20 @@ Item {
             }
         }
 
+        var columnHasBlocksAfter = false;
+        for (var verifyRow = 0; verifyRow < gridRows; ++verifyRow) {
+            const verifyEntry = getBlockEntryAt(verifyRow, column);
+            if (!verifyEntry)
+                continue;
+            const verifyState = normalizeStateName(verifyEntry.blockState);
+            const verifyHealthActive = (verifyEntry.health === undefined || verifyEntry.health === null || verifyEntry.health > 0);
+            if (verifyHealthActive && verifyState !== "destroyed" && verifyState !== "waitandexplode") {
+                columnHasBlocksAfter = true;
+                break;
+            }
+        }
+        const columnClearedAfterImpact = !columnHasBlocksAfter;
+
         const breachHealth = remaining;
         const breachOccurred = columnClearedBeforeImpact && breachHealth > 0;
         if (breachOccurred && shakeEffector)
@@ -1732,14 +1762,20 @@ Item {
         });
 
         var endpointRow;
-        if (lastImpact)
+        var endpointOverridesBounds = false;
+        if (columnClearedAfterImpact) {
+            endpointOverridesBounds = true;
+            endpointRow = damageAscending ? (gridRows + 1) : -2;
+        } else if (lastImpact)
             endpointRow = lastImpact.row;
         else
             endpointRow = damageAscending ? 0 : gridRows - 1;
-        if (endpointRow < 0)
-            endpointRow = 0;
-        else if (endpointRow >= gridRows)
-            endpointRow = gridRows - 1;
+        if (!endpointOverridesBounds) {
+            if (endpointRow < 0)
+                endpointRow = 0;
+            else if (endpointRow >= gridRows)
+                endpointRow = gridRows - 1;
+        }
         const endpointCell = cellPosition(endpointRow, column);
         const endpointGlobal = root.mapToGlobal(endpointCell.x, endpointCell.y);
         informBlockLaunchEndPoint(endpointPayload, endpointGlobal.x, endpointGlobal.y);

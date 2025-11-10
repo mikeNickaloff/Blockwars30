@@ -10,6 +10,7 @@ Item {
     property string controlledTurn: "top"
     property bool enabled: true
     property int planningDelay: 220
+    readonly property int heroPlacementRetries: 3
 
     signal swapRequested(int row1, int column1, int row2, int column2)
 
@@ -84,6 +85,10 @@ Item {
     function planMove() {
         if (!canActNow())
             return;
+        if (attemptPowerupActions()) {
+            schedulePlanning("heroAction");
+            return;
+        }
         const matrix = captureColorMatrix();
         if (!matrix)
             return;
@@ -93,6 +98,90 @@ Item {
         const choice = swaps[Math.floor(Math.random() * swaps.length)];
         console.log("AI wants to swap", JSON.stringify(choice));
         swapRequested(choice.row1, choice.column1, choice.row2, choice.column2);
+    }
+
+    function attemptPowerupActions() {
+        var slots = (battleCardSidebar && battleCardSidebar.sidebarCards) ? battleCardSidebar.sidebarCards : [];
+        if (!slots.length)
+            return false;
+        var deployable = [];
+        var activatable = [];
+        for (var idx = 0; idx < slots.length; ++idx) {
+            var slot = slots[idx];
+            if (!slot || !slot.cardData)
+                continue;
+            var card = slot.cardData;
+            if (card.heroDefeated || !card.activationReady)
+                continue;
+            if (!card.heroPlaced)
+                deployable.push(slot);
+            else if (card.heroAlive)
+                activatable.push(slot);
+        }
+        if (deployable.length && tryPlaceHeroSlot(deployable[Math.floor(Math.random() * deployable.length)]))
+            return true;
+        if (activatable.length && tryActivateHeroSlot(activatable[Math.floor(Math.random() * activatable.length)]))
+            return true;
+        return false;
+    }
+
+    function tryPlaceHeroSlot(slot) {
+        if (!slot || !slot.cardData || !battleGrid || !gameScene)
+            return false;
+        var card = slot.cardData;
+        var gridRows = battleGrid.gridRows || 0;
+        var gridCols = battleGrid.gridCols || 0;
+        var heroRows = Math.max(1, card.powerupHeroRowSpan || 1);
+        var heroCols = Math.max(1, card.powerupHeroColSpan || 1);
+        if (heroRows > gridRows || heroCols > gridCols)
+            return false;
+        var maxRow = Math.max(0, gridRows - heroRows);
+        var maxCol = Math.max(0, gridCols - heroCols);
+        for (var attempt = 0; attempt < heroPlacementRetries; ++attempt) {
+            var row = randomInt(maxRow);
+            var column = randomInt(maxCol);
+            if (typeof battleGrid.canPlaceHero === "function") {
+                if (!battleGrid.canPlaceHero(card.powerupUuid, row, column, heroRows, heroCols))
+                    continue;
+            }
+            if (typeof gameScene.attemptHeroPlacementAtCell === "function" && gameScene.attemptHeroPlacementAtCell(battleGrid, card, row, column)) {
+                console.log("AI placed hero", card.powerupName, "at", row, column);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function tryActivateHeroSlot(slot) {
+        if (!slot || !slot.cardData)
+            return false;
+        if (!cardReadyForActivation(slot.cardData))
+            return false;
+        if (battleCardSidebar) {
+            if (typeof battleCardSidebar.forceHeroActivation === "function")
+                return !!battleCardSidebar.forceHeroActivation(slot);
+            if (typeof battleCardSidebar.requestHeroActivation === "function")
+                return !!battleCardSidebar.requestHeroActivation(slot, { ignoreInteractions: true });
+        }
+        if (gameScene && typeof gameScene.triggerPowerupActivation === "function")
+            return !!gameScene.triggerPowerupActivation(slot.cardData, { trigger: "ai" });
+        return false;
+    }
+
+    function cardReadyForActivation(card) {
+        if (!card)
+            return false;
+        if (!card.heroPlaced)
+            return false;
+        if (!card.heroAlive)
+            return false;
+        return !!card.activationReady;
+    }
+
+    function randomInt(maxInclusive) {
+        if (!isFinite(maxInclusive) || maxInclusive <= 0)
+            return 0;
+        return Math.floor(Math.random() * (maxInclusive + 1));
     }
 
     function captureColorMatrix() {

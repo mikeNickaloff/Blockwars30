@@ -8,12 +8,12 @@ Item {
     property real offsetY: 0
 
     // Impact (block destroyed) tuning.
-    property real impactAmplitude: 6
-    property int impactDuration: 120
+    property real impactAmplitude: 10
+    property int impactDuration: 260
 
     // Breach (column cleared) tuning.
-    property real breachAmplitude: 12
-    property int breachDuration: 180
+    property real breachAmplitude: 20
+    property int breachDuration: 380
 
     readonly property bool isAnimating: settleAnimation.running
 

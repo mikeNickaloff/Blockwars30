@@ -31,6 +31,7 @@ QtObject {
     property string powerupCardColor: "blue"
     property int powerupHeroRowSpan: 1
     property int powerupHeroColSpan: 1
+    property int powerupIcon: 0
 
     property int powerupCardEnergyRequired: 0
 
@@ -140,6 +141,23 @@ QtObject {
 
     onPowerupHeroRowSpanChanged: ensureHeroSpanDefaults()
     onPowerupHeroColSpanChanged: ensureHeroSpanDefaults()
+    function normalizePowerupIcon(value) {
+        var normalized = Number(value)
+        if (!isFinite(normalized))
+            normalized = 0
+        normalized = Math.floor(normalized)
+        if (normalized < 0)
+            normalized = 0
+        if (normalized >= 25)
+            normalized = normalized % 25
+        return normalized
+    }
+
+    onPowerupIconChanged: {
+        var normalizedIcon = normalizePowerupIcon(powerupIcon)
+        if (normalizedIcon !== powerupIcon)
+            powerupIcon = normalizedIcon
+    }
 
     Component.onCompleted: {
         ensureSpecDataDefaults()

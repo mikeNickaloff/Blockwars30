@@ -36,5 +36,6 @@
         <file>images/block_die_ss.png</file>
         <file alias="/qt/qml/Blockwars30/game/shaders/explode.vert.qsb">game/shaders/explode.vert.qsb</file>
         <file alias="/qt/qml/Blockwars30/game/shaders/explode.frag.qsb">game/shaders/explode.frag.qsb</file>
+        <file>images/cardicons.png</file>
     </qresource>
 </RCC>
