@@ -36,9 +36,14 @@ Engine.GameScene {
     ]
 
     property bool editingActive: editingPowerup.powerupUuid.length > 0
+    readonly property int maxEnergyCost: 100
+    property var lastValidEnergyState: null
+    property bool restoringEnergyState: false
+    property bool energyLimitWarning: false
 
     Data.PowerupItem {
         id: editingPowerup
+        onEnergyRecalculated: powerupEditor.handleEnergyRecalculated(energyRequired)
     }
 
     Rectangle {
@@ -89,6 +94,57 @@ Engine.GameScene {
         return clone
     }
 
+    function cloneEnergySpecData(spec, specData) {
+        if (spec === editingPowerup.targetSpecs.Blocks)
+            return cloneBlockArray(specData)
+        if (spec === editingPowerup.targetSpecs.PlayerPowerupInGameCards)
+            return specData
+        return null
+    }
+
+    function captureEnergyState() {
+        return {
+            powerupUuid: editingPowerup.powerupUuid,
+            powerupTarget: editingPowerup.powerupTarget,
+            powerupTargetSpec: editingPowerup.powerupTargetSpec,
+            powerupTargetSpecData: cloneEnergySpecData(editingPowerup.powerupTargetSpec,
+                                                      editingPowerup.powerupTargetSpecData),
+            powerupCardHealth: editingPowerup.powerupCardHealth,
+            powerupActualAmount: editingPowerup.powerupActualAmount,
+            powerupOperation: editingPowerup.powerupOperation
+        }
+    }
+
+    function restoreEnergyState() {
+        if (!lastValidEnergyState || lastValidEnergyState.powerupUuid !== editingPowerup.powerupUuid)
+            return
+        restoringEnergyState = true
+        editingPowerup.powerupTarget = lastValidEnergyState.powerupTarget
+        editingPowerup.setTargetSpec(lastValidEnergyState.powerupTargetSpec,
+                                     cloneEnergySpecData(lastValidEnergyState.powerupTargetSpec,
+                                                         lastValidEnergyState.powerupTargetSpecData))
+        editingPowerup.powerupCardHealth = lastValidEnergyState.powerupCardHealth
+        editingPowerup.powerupActualAmount = lastValidEnergyState.powerupActualAmount
+        editingPowerup.powerupOperation = lastValidEnergyState.powerupOperation
+        editingPowerup.updateEnergyRequirement()
+        restoringEnergyState = false
+        lastValidEnergyState = captureEnergyState()
+    }
+
+    function handleEnergyRecalculated(energyRequired) {
+        if (restoringEnergyState) {
+            lastValidEnergyState = captureEnergyState()
+            return
+        }
+        if (energyRequired <= maxEnergyCost) {
+            energyLimitWarning = false
+            lastValidEnergyState = captureEnergyState()
+            return
+        }
+        energyLimitWarning = true
+        restoreEnergyState()
+    }
+
     function isBlockSelected(row, col) {
         if (editingPowerup.powerupTargetSpec !== editingPowerup.targetSpecs.Blocks)
             return false
@@ -123,6 +179,8 @@ Engine.GameScene {
     function applyEditorRecord(record) {
         if (!record)
             return
+        energyLimitWarning = false
+        lastValidEnergyState = null
         editingPowerup.powerupUuid = record.powerupUuid || ""
         editingPowerup.powerupName = record.powerupName || ""
         editingPowerup.powerupTarget = record.powerupTarget || editingPowerup.targets.Self
@@ -149,6 +207,8 @@ Engine.GameScene {
     }
 
     function clearEditor() {
+        energyLimitWarning = false
+        lastValidEnergyState = null
         editingPowerup.powerupUuid = ""
         editingPowerup.powerupName = ""
         editingPowerup.powerupTarget = editingPowerup.targets.Self
@@ -341,8 +401,8 @@ Engine.GameScene {
                     spacing: 24
 
                     UI.PowerupCard {
-                        Layout.preferredWidth: 200
-                        Layout.preferredHeight: 280
+                        Layout.preferredWidth: 160
+                        Layout.preferredHeight: 220
                         powerupUuid: editingPowerup.powerupUuid
                         powerupName: editingPowerup.powerupName
                         powerupTarget: editingPowerup.powerupTarget
@@ -362,7 +422,7 @@ Engine.GameScene {
                     ColumnLayout {
                         Layout.alignment: Qt.AlignTop
                         Layout.fillWidth: true
-                        spacing: 8
+                        spacing: 12
 
                         Text {
                             text: qsTr("Editing: %1").arg(editingPowerup.powerupName.length ? editingPowerup.powerupName : editingPowerup.powerupUuid)
@@ -370,10 +430,56 @@ Engine.GameScene {
                             color: "#ffffff"
                         }
 
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 6
+
+                            Text {
+                                text: qsTr("Energy Budget (max %1)").arg(maxEnergyCost)
+                                font.pixelSize: 14
+                                color: "#cfd8dc"
+                            }
+
+                            Item {
+                                id: editorEnergyBar
+                                Layout.fillWidth: true
+                                height: 20
+
+                                Rectangle {
+                                    id: editorEnergyBarBackground
+                                    anchors.fill: parent
+                                    radius: height / 2
+                                    color: "#162237"
+                                    border.color: "#0b1320"
+                                    border.width: 1
+                                }
+
+                                Rectangle {
+                                    anchors {
+                                        left: editorEnergyBarBackground.left
+                                        top: editorEnergyBarBackground.top
+                                        bottom: editorEnergyBarBackground.bottom
+                                    }
+                                    width: editorEnergyBarBackground.width * Math.min(1, editingPowerup.powerupCardEnergyRequired / maxEnergyCost)
+                                    radius: editorEnergyBarBackground.radius
+                                    color: cardColorHex(editingPowerup.powerupCardColor)
+                                    opacity: 0.85
+                                }
+                            }
+
+                            Text {
+                                text: qsTr("%1 / %2").arg(Math.min(editingPowerup.powerupCardEnergyRequired, maxEnergyCost)).arg(maxEnergyCost)
+                                font.pixelSize: 12
+                                color: "#64ffda"
+                            }
+                        }
+
                         Text {
-                            text: qsTr("Energy Cost: %1").arg(editingPowerup.powerupCardEnergyRequired)
-                            font.pixelSize: 14
-                            color: "#64ffda"
+                            visible: energyLimitWarning
+                            Layout.fillWidth: true
+                            text: qsTr("Energy limit reached. Lower your values to stay at or below %1.").arg(maxEnergyCost)
+                            wrapMode: Text.WordWrap
+                            color: "#ff8a80"
                         }
                     }
                 }
@@ -593,4 +699,6 @@ Engine.GameScene {
             }
         }
     }
+
+    Component.onCompleted: lastValidEnergyState = captureEnergyState()
 }

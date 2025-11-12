@@ -1,4 +1,5 @@
 import QtQuick 2.15
+import "./" as UI
 
 Item {
     id: hero
@@ -7,6 +8,7 @@ Item {
     property string powerupCardColor: "blue"
     property int powerupHeroRowSpan: 1
     property int powerupHeroColSpan: 1
+    property int powerupIcon: 0
     property int cellWidth: 50
     property int cellHeight: 50
     property real cellSpacing: 2
@@ -24,6 +26,9 @@ Item {
                                            yellow: "#ffeb3b",
                                            purple: "#b388ff"
                                        })
+    readonly property int heroIconIndex: cardData && cardData.powerupIcon !== undefined
+            ? cardData.powerupIcon
+            : powerupIcon
 
     readonly property real spanWidth: Math.max(1, powerupHeroColSpan) * cellWidth + Math.max(0, powerupHeroColSpan - 1) * cellSpacing
     readonly property real spanHeight: Math.max(1, powerupHeroRowSpan) * cellHeight + Math.max(0, powerupHeroRowSpan - 1) * cellSpacing
@@ -52,6 +57,7 @@ Item {
         powerupCardColor = record.powerupCardColor || "blue"
         powerupHeroRowSpan = record.powerupHeroRowSpan || 1
         powerupHeroColSpan = record.powerupHeroColSpan || 1
+        powerupIcon = record.powerupIcon !== undefined ? record.powerupIcon : 0
     }
 
     Rectangle {
@@ -89,17 +95,21 @@ Item {
         antialiasing: true
         z: 1
 
+        UI.PowerupIconSprite {
+            id: heroIconGraphic
+            anchors.centerIn: parent
+            width: Math.min(hero.width, hero.height) * 0.65
+            height: width
+            iconIndex: heroIconIndex
+            visible: heroIconIndex >= 0
+        }
+
         Text {
             id: heroLabel
             anchors.centerIn: parent
+            visible: false
+            opacity: 0
             text: powerupName.length ? powerupName : qsTr("Hero")
-            color: "#f5f5f5"
-            font.pixelSize: Math.max(10, Math.min(hero.width, hero.height) * 0.18)
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-            elide: Text.ElideRight
-            wrapMode: Text.WordWrap
-            width: parent.width * 0.8
         }
     }
 }

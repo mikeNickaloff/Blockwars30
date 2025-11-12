@@ -733,6 +733,10 @@ INSERT INTO defs VALUES(672,1,'signal','signal healthDepleted(var payload)',NULL
 INSERT INTO defs VALUES(673,2,'signal','signal battleOutcomeDismissed(string result)',NULL,'Raised after the outcome overlay is acknowledged so the main menu can tear down the DebugScene.');
 INSERT INTO defs VALUES(674,2,'function','handleGridDefeat(payload)','payload','Centralized handler that freezes gameplay, determines the winner, and shows the outcome scene once a grid health depletion signal fires.');
 INSERT INTO defs VALUES(675,53,'signal','signal closeRequested()',NULL,'Notifies parents that the player dismissed the outcome overlay and follow-up navigation can proceed.');
+INSERT INTO defs VALUES(676,8,'function','cloneEnergySpecData(spec, specData)','spec, specData','Clones the target-specific payload for safe reuse when enforcing the energy limit.');
+INSERT INTO defs VALUES(677,8,'function','captureEnergyState()',NULL,'Captures the current set of energy-impacting properties so edits can roll back to the last valid combination.');
+INSERT INTO defs VALUES(678,8,'function','restoreEnergyState()',NULL,'Reapplies the previously captured energy-safe values when a user change would exceed the 100 cost cap.');
+INSERT INTO defs VALUES(679,8,'function','handleEnergyRecalculated(energyRequired)','energyRequired','Central energy guard that clamps the meter, records valid states, and rolls back edits that would push the card above 100 energy.');
 CREATE TABLE refs (
   id INTEGER PRIMARY KEY,
   def_id INTEGER NOT NULL,

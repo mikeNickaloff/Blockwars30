@@ -23,8 +23,12 @@ Item {
     readonly property real cardMinDim: Math.min(cardWidth, cardHeight)
     readonly property real cardMargin: cardHeight * 0.08
     readonly property real sectionSpacing: cardHeight * 0.08
-    readonly property real iconHeight: cardHeight * 0.45
-    readonly property real energyFont: Math.min(8, cardHeight * 0.42)
+    readonly property real iconHeight: cardHeight * 0.6
+    readonly property real energyIconSize: Math.min(cardMinDim * 0.4, cardHeight * 0.28)
+    readonly property int maxEnergyCost: 100
+    readonly property real energyCostRatio: maxEnergyCost > 0
+            ? Math.min(1, powerup.powerupCardEnergyRequired / maxEnergyCost)
+            : 0
 
     property alias powerupData: powerup
     property alias powerupUuid: powerup.powerupUuid
@@ -121,26 +125,88 @@ Item {
             spacing: sectionSpacing
             Layout.alignment: Qt.AlignHCenter
 
-            Item {
-                id: iconArea
+            Rectangle {
+                id: iconPanel
                 Layout.fillWidth: true
                 Layout.preferredHeight: iconHeight
+                radius: cardMinDim * 0.12
+                color: "#0d1524"
+                border.width: Math.max(1, cardMinDim * 0.015)
+                border.color: cardColorHex()
+                antialiasing: true
 
-                Loader {
-                    anchors.fill: parent
-                    sourceComponent: powerup.powerupTargetSpec === powerup.targetSpecs.Blocks ? blocksIcon
-                                        : powerup.powerupTargetSpec === powerup.targetSpecs.PlayerPowerupInGameCards ? cardIcon
-                                        : playerIcon
+                UI.PowerupIconSprite {
+                    anchors.centerIn: parent
+                    width: parent.width * 0.78
+                    height: width
+                    iconIndex: powerup.powerupIcon
                 }
             }
 
-            Text {
+            Rectangle {
+                id: detailPanel
                 Layout.fillWidth: true
-                text: qsTr("%1 ⚡").arg(powerup.powerupCardEnergyRequired)
-                font.pixelSize: 4
-                font.bold: true
-                color: "#64ffda"
-                horizontalAlignment: Text.AlignHCenter
+                Layout.preferredHeight: cardHeight * 0.28
+                radius: cardMinDim * 0.08
+                color: "#101a2b"
+                border.width: Math.max(1, cardMinDim * 0.015)
+                border.color: "#0f1725"
+                antialiasing: true
+
+                Loader {
+                    anchors.fill: parent
+                    sourceComponent: powerup.powerupTargetSpec === powerup.targetSpecs.Blocks ? blocksIcon : detailPattern
+                }
+            }
+
+            Item {
+                id: energyBar
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.max(6, cardHeight * 0.13)
+
+                Rectangle {
+                    id: energyBarBackground
+                    anchors.fill: parent
+                    radius: height / 2
+                    color: "#0b1019"
+                    border.width: Math.max(1, height * 0.1)
+                    border.color: "#04070c"
+                    opacity: 0.9
+                }
+
+                Rectangle {
+                    id: energyCapacityFill
+                    anchors {
+                        left: energyBarBackground.left
+                        top: energyBarBackground.top
+                        bottom: energyBarBackground.bottom
+                    }
+                    width: energyBarBackground.width * energyCostRatio
+                    radius: energyBarBackground.radius
+                    color: Qt.rgba(0.4, 0.58, 0.76, 0.35)
+                    visible: energyCostRatio > 0
+                }
+
+                Rectangle {
+                    id: energyRuntimeFill
+                    anchors {
+                        left: energyBarBackground.left
+                        top: energyBarBackground.top
+                        bottom: energyBarBackground.bottom
+                    }
+                    width: energyBarBackground.width * energyCostRatio * runtimeEnergyProgress
+                    radius: energyBarBackground.radius
+                    color: cardColorHex()
+                    opacity: 0.9
+                    visible: energyCostRatio > 0
+                }
+
+                Text {
+                    anchors.centerIn: energyBarBackground
+                    text: "\u26A1"
+                    font.pixelSize: Math.max(8, energyIconSize * 0.6)
+                    color: "#e0f7fa"
+                }
             }
         }
     }
@@ -154,57 +220,23 @@ Item {
         cursorShape: Qt.PointingHandCursor
     }
 
-    Rectangle {
-        id: energyFill
-        anchors.left: cardFace.left
-        anchors.bottom: cardFace.bottom
-        height: Math.max(2, cardHeight * 0.085)
-        width: cardFace.width * runtimeEnergyProgress
-        radius: height * 0.6
-        color: cardColorHex()
-        opacity: 0.95
-    }
-
-    Component {
-        id: playerIcon
-        Rectangle {
-            anchors.centerIn: parent
-            readonly property real iconDim: Math.min(parent.width, parent.height) * 0.35
-            width: iconDim
-            height: iconDim
-            radius: iconDim / 2
-            color: "#2f3a4f"
-            border.width: Math.max(1, iconDim * 0.12)
-            border.color: cardColorHex()
-            Text {
-                anchors.centerIn: parent
-                text: "👤"
-                font.pixelSize: iconDim * 0.55
-            }
-        }
-    }
-
     Component {
         id: blocksIcon
         Item {
-            anchors.top: parent.top
-            readonly property real iconDim: Math.min(parent.width, parent.height) * 0.45
-            width: iconDim
-            height: iconDim
-
+            anchors.fill: parent
+            readonly property real gridPadding: Math.min(width, height) * 0.08
             Grid {
                 id: blockGrid
-                anchors.centerIn: parent
-                width: iconDim
-                height: iconDim
+                anchors.fill: parent
+                anchors.margins: gridPadding
                 rows: 6
                 columns: 6
-                rowSpacing: iconDim * 0.015
-                columnSpacing: iconDim * 0.015
+                rowSpacing: gridPadding * 0.3
+                columnSpacing: gridPadding * 0.3
                 Repeater {
                     model: 36
                     delegate: Rectangle {
-                        readonly property real cellSize: (iconDim - (blockGrid.columns - 1) * blockGrid.columnSpacing) / blockGrid.columns
+                        readonly property real cellSize: (blockGrid.width - (blockGrid.columns - 1) * blockGrid.columnSpacing) / blockGrid.columns
                         width: cellSize
                         height: cellSize
                         color: targetedBlocksContains(Math.floor(index / 6), index % 6) ? cardColorHex() : unselectedBlockColor()
@@ -218,24 +250,29 @@ Item {
     }
 
     Component {
-        id: cardIcon
+        id: detailPattern
         Item {
             anchors.fill: parent
-            readonly property real iconDim: Math.min(width, height) * 0.6
-            Rectangle {
-                anchors.centerIn: parent
-                width: iconDim * 1.1
-                height: iconDim * 1.1
-                radius: width * 0.2
-                color: "#101622"
-                border.width: Math.max(1, width * 0.08)
-                border.color: cardColorHex()
+
+            Repeater {
+                model: 5
+                delegate: Rectangle {
+                    width: parent.width * 1.5
+                    height: parent.height * 0.12
+                    x: -parent.width * 0.25
+                    y: index * parent.height * 0.18
+                    rotation: 18
+                    radius: height / 2
+                    color: Qt.rgba(0.3, 0.38, 0.52, 0.2)
+                }
             }
-            UI.PowerupIconSprite {
-                anchors.centerIn: parent
-                width: iconDim
-                height: iconDim
-                iconIndex: powerup.powerupIcon
+
+            Rectangle {
+                anchors.fill: parent
+                color: "transparent"
+                border.width: 1
+                border.color: Qt.rgba(0.22, 0.32, 0.48, 0.4)
+                radius: height * 0.2
             }
         }
     }
