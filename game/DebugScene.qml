@@ -676,27 +676,143 @@ Engine.GameScene {
             return grid === battleGrid_top ? battleGrid_bottom : grid === battleGrid_bottom ? battleGrid_top : null;
         }
 
-        function adjustGridHealth(targetGrid, amount, operation) {
-            if (!targetGrid)
-                return;
-            var delta = Math.max(0, Math.floor(amount || 0));
-            if (delta <= 0)
-                return;
-            var op = (operation || "decrease").toString().toLowerCase();
-            if (op === "increase") {
-                var maxHealth = targetGrid.mainHealthMax !== undefined ? targetGrid.mainHealthMax : targetGrid.mainHealth;
-                if (maxHealth === undefined || maxHealth <= 0)
-                    maxHealth = delta;
-                targetGrid.mainHealth = Math.min(maxHealth, targetGrid.mainHealth + delta);
-            } else
-                targetGrid.mainHealth = Math.max(0, targetGrid.mainHealth - delta);
-        }
+    function adjustGridHealth(targetGrid, amount, operation) {
+        if (!targetGrid)
+            return;
+        var delta = Math.max(0, Math.floor(amount || 0));
+        if (delta <= 0)
+            return;
+        var op = (operation || "decrease").toString().toLowerCase();
+        if (op === "increase") {
+            var maxHealth = targetGrid.mainHealthMax !== undefined ? targetGrid.mainHealthMax : targetGrid.mainHealth;
+            if (maxHealth === undefined || maxHealth <= 0)
+                maxHealth = delta;
+            targetGrid.mainHealth = Math.min(maxHealth, targetGrid.mainHealth + delta);
+        } else
+            targetGrid.mainHealth = Math.max(0, targetGrid.mainHealth - delta);
+    }
 
-        function triggerPowerupActivation(cardData, options) {
-            if (!cardData) {
-                // console.log("Powerup activation gating: missing cardData");
-                return false;
+    function normalizedLaunchDirection(grid) {
+        var direction = grid && grid.launchDirection ? grid.launchDirection.toString().toLowerCase() : "down";
+        return direction === "up" ? "up" : "down";
+    }
+
+    function gridRowBaseOffset(grid, rowCount) {
+        if (!grid)
+            return 0;
+        var rows = Math.max(1, rowCount !== undefined ? rowCount : (grid.gridRows || 6));
+        return normalizedLaunchDirection(grid) === "up" ? rows : 0;
+    }
+
+    function heroPlacementCenter(cardData) {
+        var hero = cardData && cardData.heroInstance ? cardData.heroInstance : null;
+        if (!hero)
+            return { valid: false, row: 0, column: 0 };
+        var rowSpan = Math.max(1, cardData.powerupHeroRowSpan || 1);
+        var colSpan = Math.max(1, cardData.powerupHeroColSpan || 1);
+        var anchorRow = hero.anchoredRow !== undefined ? hero.anchoredRow : 0;
+        var anchorColumn = hero.anchoredColumn !== undefined ? hero.anchoredColumn : 0;
+        return {
+            valid: true,
+            row: anchorRow + Math.floor((rowSpan - 1) / 2),
+            column: anchorColumn + Math.floor((colSpan - 1) / 2)
+        };
+    }
+
+    function sanitizeRelativeGridAreaData(specData) {
+        function normalizeDimension(value) {
+            var dimension = Number(value);
+            if (!isFinite(dimension))
+                dimension = 1;
+            dimension = Math.floor(dimension);
+            if (dimension < 1)
+                dimension = 1;
+            if (dimension > 5)
+                dimension = 5;
+            return dimension;
+        }
+        function normalizeDistance(value) {
+            var distance = Number(value);
+            if (!isFinite(distance))
+                distance = 6;
+            distance = Math.floor(distance);
+            if (distance < -6)
+                distance = -6;
+            if (distance > 6)
+                distance = 6;
+            return distance;
+        }
+        var payload = specData && typeof specData === "object" ? specData : {};
+        var rowsValue = payload.rows !== undefined ? payload.rows : (payload.rowCount !== undefined ? payload.rowCount : 1);
+        var colsValue = payload.columns !== undefined ? payload.columns : (payload.colCount !== undefined ? payload.colCount : 1);
+        var distanceValue = payload.distance !== undefined ? payload.distance : (payload.rowOffset !== undefined ? payload.rowOffset : 6);
+        return {
+            rows: normalizeDimension(rowsValue),
+            columns: normalizeDimension(colsValue),
+            distance: normalizeDistance(distanceValue)
+        };
+    }
+
+    function buildRelativeGridAreaCells(cardData, targetGrid) {
+        if (!cardData || !targetGrid)
+            return [];
+        var center = heroPlacementCenter(cardData);
+        if (!center.valid)
+            return [];
+        var specData = sanitizeRelativeGridAreaData(cardData.powerupTargetSpecData);
+        var sourceGrid = cardData.battleGrid || null;
+        var forwardDirection = normalizedLaunchDirection(sourceGrid);
+        var forwardSign = forwardDirection === "up" ? -1 : 1;
+        var sourceGridRows = Math.max(1, (sourceGrid && sourceGrid.gridRows) || 6);
+        var targetGridRows = Math.max(1, targetGrid.gridRows || 6);
+        var sourceBaseRow = gridRowBaseOffset(sourceGrid, sourceGridRows);
+        var targetBaseRow = gridRowBaseOffset(targetGrid, targetGridRows);
+        var centerGlobalRow = sourceBaseRow + center.row;
+        var globalTargetRow = centerGlobalRow + forwardSign * specData.distance;
+        var targetMinRow = targetBaseRow;
+        var targetMaxRow = targetBaseRow + targetGridRows - 1;
+        if (globalTargetRow < targetMinRow)
+            globalTargetRow = targetMinRow;
+        if (globalTargetRow > targetMaxRow)
+            globalTargetRow = targetMaxRow;
+        var projectedRow = globalTargetRow - targetBaseRow;
+        var gridCols = Math.max(1, targetGrid.gridCols || 6);
+        var areaRows = Math.max(1, Math.min(targetGridRows, specData.rows));
+        var areaCols = Math.max(1, Math.min(gridCols, specData.columns));
+        var rowOffset = Math.floor((areaRows - 1) / 2);
+        var colOffset = Math.floor((areaCols - 1) / 2);
+        var startRow = projectedRow - rowOffset;
+        var maxRowStart = Math.max(0, targetGridRows - areaRows);
+        if (startRow < 0)
+            startRow = 0;
+        if (startRow > maxRowStart)
+            startRow = maxRowStart;
+        var startCol = center.column - colOffset;
+        var maxColStart = Math.max(0, gridCols - areaCols);
+        if (startCol < 0)
+            startCol = 0;
+        if (startCol > maxColStart)
+            startCol = maxColStart;
+        var cells = [];
+        for (var r = 0; r < areaRows; ++r) {
+            var rowValue = startRow + r;
+            if (rowValue < 0 || rowValue >= targetGridRows)
+                continue;
+            for (var c = 0; c < areaCols; ++c) {
+                var columnValue = startCol + c;
+                if (columnValue < 0 || columnValue >= gridCols)
+                    continue;
+                cells.push({ row: rowValue, column: columnValue });
             }
+        }
+        return cells;
+    }
+
+    function triggerPowerupActivation(cardData, options) {
+        if (!cardData) {
+            // console.log("Powerup activation gating: missing cardData");
+            return false;
+        }
             var sourceGrid = cardData.battleGrid || null;
             if (!sourceGrid) {
                 // console.log("Powerup activation gating: card missing battleGrid binding", cardData.powerupUuid);
@@ -817,6 +933,20 @@ Engine.GameScene {
                     var heroImpacts = targetGrid.applyHeroDeltaByColor(colorFilter, amount, operation, { trigger: triggerInfo.trigger || "manual", sourceCard: cardData });
                     // console.log("Powerup activation flow: hero delta results", JSON.stringify(heroImpacts));
                     activationApplied = heroImpacts && heroImpacts.length > 0;
+                }
+                break;
+            }
+            case "RelativeGridArea": {
+                if (targetGrid.applyBlockDeltaList) {
+                    var relativeCells = buildRelativeGridAreaCells(cardData, targetGrid);
+                    if (relativeCells.length) {
+                        var relativeResults = targetGrid.applyBlockDeltaList(relativeCells, amount, operation, {
+                                                                                                                 trigger: triggerInfo.trigger || "manual",
+                                                                                                                 sourceCard: cardData,
+                                                                                                                 spec: "RelativeGridArea"
+                                                                                                             });
+                        activationApplied = relativeResults && relativeResults.length > 0;
+                    }
                 }
                 break;
             }

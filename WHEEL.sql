@@ -60,6 +60,7 @@ INSERT INTO files VALUES(52,'game/ui/PowerupIconSprite.qml','Reusable sprite-she
 INSERT INTO files VALUES(53,'game/BattleOutcomeScene.qml','Overlay scene that presents battle results with messaging and an action button.');
 INSERT INTO files VALUES(54,'game/BattleWinnerScene.qml','Specialized outcome scene that congratulates the player on victory.');
 INSERT INTO files VALUES(55,'game/BattleLoserScene.qml','Specialized outcome scene that informs the player of defeat.');
+INSERT INTO files VALUES(56,'game/ui/RelativeAreaSpecEditor.qml','Editor controls for configuring relative grid area specs.');
 CREATE TABLE defs (
   id INTEGER PRIMARY KEY,
   file_id INTEGER NOT NULL,
@@ -737,6 +738,34 @@ INSERT INTO defs VALUES(676,8,'function','cloneEnergySpecData(spec, specData)','
 INSERT INTO defs VALUES(677,8,'function','captureEnergyState()',NULL,'Captures the current set of energy-impacting properties so edits can roll back to the last valid combination.');
 INSERT INTO defs VALUES(678,8,'function','restoreEnergyState()',NULL,'Reapplies the previously captured energy-safe values when a user change would exceed the 100 cost cap.');
 INSERT INTO defs VALUES(679,8,'function','handleEnergyRecalculated(energyRequired)','energyRequired','Central energy guard that clamps the meter, records valid states, and rolls back edits that would push the card above 100 energy.');
+INSERT INTO defs VALUES(680,4,'function','defaultRelativeAreaSpecData()',NULL,'Returns the baseline rows/columns/distance payload for relative grid area specs.');
+INSERT INTO defs VALUES(681,4,'function','normalizedRelativeAreaDimension(value)','value:number','Clamps a relative area dimension between 1 and 5 cells.');
+INSERT INTO defs VALUES(682,4,'function','normalizedRelativeAreaDistance(value)','value:number','Bounds the forward/backward row offset for relative area specs between -6 and 6.');
+INSERT INTO defs VALUES(683,4,'function','sanitizedRelativeAreaSpecData(value)','value:var','Produces a normalized relative area payload with valid rows, columns, and distance.');
+INSERT INTO defs VALUES(684,4,'function','relativeAreaDataEquals(a, b)','a:var, b:var','Checks whether two relative area spec payloads share identical rows, columns, and distance.');
+INSERT INTO defs VALUES(685,4,'function','relativeAreaBlockCount(data)','data:var','Calculates how many cells a relative area spec will affect for energy scaling.');
+INSERT INTO defs VALUES(686,4,'function','applyRelativeAreaSanitization()',NULL,'Ensures edits to the relative area spec immediately reapply normalization before recalculating energy.');
+INSERT INTO defs VALUES(687,5,'function','normalizedRelativeAreaDimension(value)','value:number','Clamps relative area dimensions for persistence to the 1-5 range.');
+INSERT INTO defs VALUES(688,5,'function','normalizedRelativeAreaDistance(value)','value:number','Limits stored relative area offsets to the supported -6 to 6 range.');
+INSERT INTO defs VALUES(689,5,'function','sanitizedRelativeGridAreaData(value)','value:var','Builds a clean relative area payload before serializing to the database.');
+INSERT INTO defs VALUES(690,2,'function','normalizedLaunchDirection(grid)','grid:Item','Converts a battle grid''s launchDirection property into a normalized up/down token.');
+INSERT INTO defs VALUES(691,2,'function','heroPlacementCenter(cardData)','cardData:var','Derives the center cell of a deployed hero using its anchor row/column and span.');
+INSERT INTO defs VALUES(692,2,'function','sanitizeRelativeGridAreaData(specData)','specData:var','Normalizes editor-provided relative area payloads before activation logic uses them.');
+INSERT INTO defs VALUES(693,2,'function','buildRelativeGridAreaCells(cardData, targetGrid)','cardData:var, targetGrid:Item','Builds the list of target cells for a relative grid area spec, respecting launch direction and board limits.');
+INSERT INTO defs VALUES(694,8,'function','normalizeRelativeAreaDimension(value)','value:number','Clamps the editor''s relative area dimensions to the supported 1-5 range.');
+INSERT INTO defs VALUES(695,8,'function','normalizeRelativeAreaDistance(value)','value:number','Clamps the editor''s relative area row offset between -6 and 6 before saving.');
+INSERT INTO defs VALUES(696,8,'function','cloneRelativeAreaSpecData(data)','data:var','Produces a safe copy of the relative area payload for capture/restore flows.');
+INSERT INTO defs VALUES(697,6,'function','normalizedRelativeAreaDimension(value)','value:number','Normalizes relative area dimensions for card preview rendering.');
+INSERT INTO defs VALUES(698,6,'function','normalizedRelativeAreaDistance(value)','value:number','Bounds the relative area distance used in card summaries.');
+INSERT INTO defs VALUES(699,6,'function','relativeAreaSpecData()',NULL,'Returns the sanitized relative area payload for card display, or null for other specs.');
+INSERT INTO defs VALUES(700,6,'function','relativeAreaSummary()',NULL,'Generates the short text describing rows, columns, and offset for relative area cards.');
+INSERT INTO defs VALUES(701,56,'function','clampDistance(value)','value:number','Keeps the row offset within the allowed -6 to 6 range for the relative area editor.');
+INSERT INTO defs VALUES(702,56,'function','clampDimension(value)','value:number','Constrains relative area rows/columns between 1 and 5 for the editor UI.');
+INSERT INTO defs VALUES(703,56,'function','syncFromSpec(source)','source:var','Loads incoming spec data into the editor''s local row/column/distance state.');
+INSERT INTO defs VALUES(704,56,'function','emitSpecChange()',NULL,'Emits the sanitized rows/columns/distance payload when the user edits controls.');
+INSERT INTO defs VALUES(705,56,'function','summaryText()',NULL,'Provides a human-readable explanation of where the relative area will land.');
+INSERT INTO defs VALUES(706,56,'signal','signal specChanged(var spec)','spec:var','Emitted whenever the editor produces a new sanitized relative area payload.');
+INSERT INTO defs VALUES(707,2,'function','gridRowBaseOffset(grid, rowCount)','grid:Item, rowCount:int','Returns the global row offset for a grid by using its launch direction (top = 0, bottom = +rows).');
 CREATE TABLE refs (
   id INTEGER PRIMARY KEY,
   def_id INTEGER NOT NULL,
@@ -771,6 +800,7 @@ INSERT INTO changes VALUES(10,'Import legacy WHEEl data','Sync missing files/def
 INSERT INTO changes VALUES(11,'Battle grid shake feedback and energy payout',NULL,'in_progress');
 INSERT INTO changes VALUES(12,'Add powerup gating logs','DebugScene/BattleGrid instrumentation','in_progress');
 INSERT INTO changes VALUES(13,'Battle grid 2000 health + match-free init','Ensure both BattleGridHealthBars start at 2000 health and seed init grids without match-3 sequences.','completed');
+INSERT INTO changes VALUES(14,'Relative battlegrid powerup spec','Add launch-distance target spec for powerups plus editor, runtime, and energy updates.','completed');
 CREATE TABLE change_files (
   id INTEGER PRIMARY KEY,
   change_id INTEGER NOT NULL,
@@ -1489,6 +1519,47 @@ INSERT INTO change_defs VALUES(604,13,50,665,NULL);
 INSERT INTO change_defs VALUES(605,13,50,666,NULL);
 INSERT INTO change_defs VALUES(606,13,50,667,NULL);
 INSERT INTO change_defs VALUES(607,13,50,668,NULL);
+INSERT INTO change_defs VALUES(608,14,4,331,NULL);
+INSERT INTO change_defs VALUES(609,14,4,316,NULL);
+INSERT INTO change_defs VALUES(610,14,4,314,NULL);
+INSERT INTO change_defs VALUES(611,14,4,312,NULL);
+INSERT INTO change_defs VALUES(612,14,4,317,NULL);
+INSERT INTO change_defs VALUES(613,14,8,263,NULL);
+INSERT INTO change_defs VALUES(614,14,8,676,NULL);
+INSERT INTO change_defs VALUES(615,14,8,677,NULL);
+INSERT INTO change_defs VALUES(616,14,8,247,NULL);
+INSERT INTO change_defs VALUES(617,14,8,246,NULL);
+INSERT INTO change_defs VALUES(618,14,8,249,NULL);
+INSERT INTO change_defs VALUES(619,14,2,594,NULL);
+INSERT INTO change_defs VALUES(620,14,5,303,NULL);
+INSERT INTO change_defs VALUES(621,14,4,680,NULL);
+INSERT INTO change_defs VALUES(622,14,4,681,NULL);
+INSERT INTO change_defs VALUES(623,14,4,682,NULL);
+INSERT INTO change_defs VALUES(624,14,4,683,NULL);
+INSERT INTO change_defs VALUES(625,14,4,684,NULL);
+INSERT INTO change_defs VALUES(626,14,4,685,NULL);
+INSERT INTO change_defs VALUES(627,14,4,686,NULL);
+INSERT INTO change_defs VALUES(628,14,5,687,NULL);
+INSERT INTO change_defs VALUES(629,14,5,688,NULL);
+INSERT INTO change_defs VALUES(630,14,5,689,NULL);
+INSERT INTO change_defs VALUES(631,14,2,690,NULL);
+INSERT INTO change_defs VALUES(632,14,2,691,NULL);
+INSERT INTO change_defs VALUES(633,14,2,692,NULL);
+INSERT INTO change_defs VALUES(634,14,2,693,NULL);
+INSERT INTO change_defs VALUES(635,14,8,694,NULL);
+INSERT INTO change_defs VALUES(636,14,8,695,NULL);
+INSERT INTO change_defs VALUES(637,14,8,696,NULL);
+INSERT INTO change_defs VALUES(638,14,6,697,NULL);
+INSERT INTO change_defs VALUES(639,14,6,698,NULL);
+INSERT INTO change_defs VALUES(640,14,6,699,NULL);
+INSERT INTO change_defs VALUES(641,14,6,700,NULL);
+INSERT INTO change_defs VALUES(642,14,56,701,NULL);
+INSERT INTO change_defs VALUES(643,14,56,702,NULL);
+INSERT INTO change_defs VALUES(644,14,56,703,NULL);
+INSERT INTO change_defs VALUES(645,14,56,704,NULL);
+INSERT INTO change_defs VALUES(646,14,56,705,NULL);
+INSERT INTO change_defs VALUES(647,14,56,706,NULL);
+INSERT INTO change_defs VALUES(648,14,2,707,NULL);
 CREATE TABLE todo (
   id INTEGER PRIMARY KEY,
   change_id INTEGER NOT NULL,

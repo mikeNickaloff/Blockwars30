@@ -232,6 +232,43 @@ QtObject {
         return 'powerup-' + Date.now().toString(16) + '-' + Math.floor(Math.random() * 1e9).toString(16)
     }
 
+    function normalizedRelativeAreaDimension(value) {
+        var dimension = Number(value)
+        if (!isFinite(dimension))
+            dimension = 1
+        dimension = Math.floor(dimension)
+        if (dimension < 1)
+            dimension = 1
+        if (dimension > 5)
+            dimension = 5
+        return dimension
+    }
+
+    function normalizedRelativeAreaDistance(value) {
+        var distance = Number(value)
+        if (!isFinite(distance))
+            distance = 6
+        distance = Math.floor(distance)
+        if (distance < -6)
+            distance = -6
+        if (distance > 6)
+            distance = 6
+        return distance
+    }
+
+    function sanitizedRelativeGridAreaData(value) {
+        var sanitized = { rows: 1, columns: 1, distance: 6 }
+        if (!value || typeof value !== 'object')
+            return sanitized
+        var rowsValue = value.rows !== undefined ? value.rows : value.rowCount
+        var colsValue = value.columns !== undefined ? value.columns : value.colCount
+        var distanceValue = value.distance !== undefined ? value.distance : value.rowOffset
+        sanitized.rows = normalizedRelativeAreaDimension(rowsValue)
+        sanitized.columns = normalizedRelativeAreaDimension(colsValue)
+        sanitized.distance = normalizedRelativeAreaDistance(distanceValue)
+        return sanitized
+    }
+
     function serializeTargetSpecDataForStorage(targetSpec, data) {
         if (targetSpec === 'Blocks') {
             var sanitized = []
@@ -253,6 +290,9 @@ QtObject {
                 return data.color
             return 'blue'
         }
+
+        if (targetSpec === 'RelativeGridArea')
+            return JSON.stringify(sanitizedRelativeGridAreaData(data))
 
         return null
     }

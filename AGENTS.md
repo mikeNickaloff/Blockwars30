@@ -1,6 +1,7 @@
 # AGENT INSTRUCTIONS
 - Read this entire document and follow it's process strictly. Details matter here.
 - Do not re-invent the wheel.  Compare the descriptions of existing part of the project using ```./wheel.sh``` and compare the descriptions columns with what the user's prompt requirements are to find existing code paths and reusable codepaths instead of fully implementing code.
+- Use layering instead of if-then-else by creating new types for different logical necessary dependent groups of abstract or concrete implementations. Example: Instead of 10 Rectangles that all need to have animation behaviors, create AnimatedRectangle class with helper functions / properties for controlling the animations and use it for the base type instead of Rectangle when possible. Avoid using conditional binding statements like  v1 == v2 ? a1 : a2 ,  switch, and if-then-else at all costs except for single-value return one-off functions with few to no outside references.
 - Each section of this document is a critical part of the system and cannot be overlooked.
 - DO NOT change the engine/* files unless asked to do so specifically by filename or with prior approval
 - Confirm any changes to engine/ as they will have large impacts

@@ -11,7 +11,8 @@ QtObject {
     readonly property var targetSpecs: ({
         Blocks: "Blocks",
         PlayerHealth: "PlayerHealth",
-        PlayerPowerupInGameCards: "PlayerPowerupInGameCards"
+        PlayerPowerupInGameCards: "PlayerPowerupInGameCards",
+        RelativeGridArea: "RelativeGridArea"
     })
 
     readonly property var operations: ({
@@ -43,7 +44,10 @@ QtObject {
     }
 
     function setTargetSpec(spec, specData) {
-        if (spec === targetSpecs.Blocks || spec === targetSpecs.PlayerHealth || spec === targetSpecs.PlayerPowerupInGameCards) {
+        if (spec === targetSpecs.Blocks
+                || spec === targetSpecs.PlayerHealth
+                || spec === targetSpecs.PlayerPowerupInGameCards
+                || spec === targetSpecs.RelativeGridArea) {
             powerupTargetSpec = spec
             if (specData !== undefined)
                 powerupTargetSpecData = specData
@@ -60,7 +64,60 @@ QtObject {
                 powerupTargetSpecData = "blue"
         } else if (powerupTargetSpec === targetSpecs.PlayerHealth) {
             powerupTargetSpecData = null
+        } else if (powerupTargetSpec === targetSpecs.RelativeGridArea) {
+            powerupTargetSpecData = sanitizedRelativeAreaSpecData(powerupTargetSpecData)
         }
+    }
+
+    function defaultRelativeAreaSpecData() {
+        return {
+            rows: 1,
+            columns: 1,
+            distance: 6
+        }
+    }
+
+    function normalizedRelativeAreaDimension(value) {
+        var dimension = Number(value)
+        if (!isFinite(dimension))
+            dimension = 1
+        dimension = Math.floor(dimension)
+        if (dimension < 1)
+            dimension = 1
+        if (dimension > 5)
+            dimension = 5
+        return dimension
+    }
+
+    function normalizedRelativeAreaDistance(value) {
+        var distance = Number(value)
+        if (!isFinite(distance))
+            distance = 6
+        distance = Math.floor(distance)
+        if (distance < -6)
+            distance = -6
+        if (distance > 6)
+            distance = 6
+        return distance
+    }
+
+    function sanitizedRelativeAreaSpecData(value) {
+        var normalized = defaultRelativeAreaSpecData()
+        if (!value || typeof value !== "object")
+            return normalized
+        var hasRows = value.rows !== undefined ? value.rows : value.rowCount
+        var hasColumns = value.columns !== undefined ? value.columns : value.colCount
+        var hasDistance = value.distance !== undefined ? value.distance : value.rowOffset
+        normalized.rows = normalizedRelativeAreaDimension(hasRows)
+        normalized.columns = normalizedRelativeAreaDimension(hasColumns)
+        normalized.distance = normalizedRelativeAreaDistance(hasDistance)
+        return normalized
+    }
+
+    function relativeAreaDataEquals(a, b) {
+        if (!a || !b)
+            return false
+        return a.rows === b.rows && a.columns === b.columns && a.distance === b.distance
     }
 
     function targetBlockCount() {
@@ -69,6 +126,11 @@ QtObject {
         if (!Array.isArray(powerupTargetSpecData))
             return 0
         return powerupTargetSpecData.length
+    }
+
+    function relativeAreaBlockCount(data) {
+        var spec = sanitizedRelativeAreaSpecData(data)
+        return Math.max(1, spec.rows) * Math.max(1, spec.columns)
     }
 
     function effectiveAmount() {
@@ -85,6 +147,9 @@ QtObject {
             specMultiplier = blocks * 0.5
         } else if (powerupTargetSpec === targetSpecs.PlayerPowerupInGameCards) {
             specMultiplier = 8
+        } else if (powerupTargetSpec === targetSpecs.RelativeGridArea) {
+            var relativeBlocks = Math.max(1, relativeAreaBlockCount(powerupTargetSpecData))
+            specMultiplier = relativeBlocks * 0.5
         }
 
         var operationMultiplier = powerupOperation === operations.Decrease ? 0.5 : 0.5
@@ -113,7 +178,21 @@ QtObject {
         updateEnergyRequirement()
     }
 
-    onPowerupTargetSpecDataChanged: updateEnergyRequirement()
+    function applyRelativeAreaSanitization() {
+        if (powerupTargetSpec !== targetSpecs.RelativeGridArea)
+            return false
+        var normalized = sanitizedRelativeAreaSpecData(powerupTargetSpecData)
+        if (relativeAreaDataEquals(normalized, powerupTargetSpecData))
+            return false
+        powerupTargetSpecData = normalized
+        return true
+    }
+
+    onPowerupTargetSpecDataChanged: {
+        if (applyRelativeAreaSanitization())
+            return
+        updateEnergyRequirement()
+    }
     onPowerupCardHealthChanged: updateEnergyRequirement()
     onPowerupActualAmountChanged: updateEnergyRequirement()
     onPowerupOperationChanged: updateEnergyRequirement()

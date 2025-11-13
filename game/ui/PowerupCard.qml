@@ -21,14 +21,12 @@ Item {
     readonly property real cardWidth: width > 0 ? width : implicitWidth
     readonly property real cardHeight: height > 0 ? height : implicitHeight
     readonly property real cardMinDim: Math.min(cardWidth, cardHeight)
-    readonly property real cardMargin: cardHeight * 0.08
-    readonly property real sectionSpacing: cardHeight * 0.08
-    readonly property real iconHeight: cardHeight * 0.6
-    readonly property real energyIconSize: Math.min(cardMinDim * 0.4, cardHeight * 0.28)
-    readonly property int maxEnergyCost: 100
-    readonly property real energyCostRatio: maxEnergyCost > 0
-            ? Math.min(1, powerup.powerupCardEnergyRequired / maxEnergyCost)
-            : 0
+    readonly property real iconOverlaySize: cardWidth * 0.5
+    readonly property string normalizedTargetSpec: (powerup.powerupTargetSpec || "").toLowerCase()
+    readonly property bool isBlocksTargetSpec: powerup.powerupTargetSpec === powerup.targetSpecs.Blocks || normalizedTargetSpec === "blocks"
+    readonly property bool isCardsTargetSpec: powerup.powerupTargetSpec === powerup.targetSpecs.PlayerPowerupInGameCards || normalizedTargetSpec === "cards"
+    readonly property bool isRelativeAreaTargetSpec: powerup.powerupTargetSpec === powerup.targetSpecs.RelativeGridArea || normalizedTargetSpec === "relativegridarea"
+    readonly property color cardsTargetBorderColor: powerup.powerupTarget === powerup.targets.Enemy ? "#ff9800" : "#9e9e9e"
 
     property alias powerupData: powerup
     property alias powerupUuid: powerup.powerupUuid
@@ -97,6 +95,54 @@ Item {
         return false
     }
 
+    function normalizedRelativeAreaDimension(value) {
+        var dimension = Number(value)
+        if (!isFinite(dimension))
+            dimension = 1
+        dimension = Math.floor(dimension)
+        if (dimension < 1)
+            dimension = 1
+        if (dimension > 5)
+            dimension = 5
+        return dimension
+    }
+
+    function normalizedRelativeAreaDistance(value) {
+        var distance = Number(value)
+        if (!isFinite(distance))
+            distance = 6
+        distance = Math.floor(distance)
+        if (distance < -6)
+            distance = -6
+        if (distance > 6)
+            distance = 6
+        return distance
+    }
+
+    function relativeAreaSpecData() {
+        if (!isRelativeAreaTargetSpec)
+            return null
+        var data = powerup.powerupTargetSpecData || {}
+        return {
+            rows: normalizedRelativeAreaDimension(data.rows !== undefined ? data.rows : data.rowCount),
+            columns: normalizedRelativeAreaDimension(data.columns !== undefined ? data.columns : data.colCount),
+            distance: normalizedRelativeAreaDistance(data.distance !== undefined ? data.distance : data.rowOffset)
+        }
+    }
+
+    function relativeAreaSummary() {
+        var spec = relativeAreaSpecData()
+        if (!spec)
+            return ""
+        var sizeText = qsTr("%1x%2 area").arg(spec.rows).arg(spec.columns)
+        if (spec.distance === 0)
+            return qsTr("%1 aligned with hero").arg(sizeText)
+        var magnitude = Math.abs(spec.distance)
+        if (spec.distance > 0)
+            return qsTr("%1 %2 rows ahead").arg(sizeText).arg(magnitude)
+        return qsTr("%1 %2 rows behind").arg(sizeText).arg(magnitude)
+    }
+
     function cardColorHex() {
         var value = (powerup.powerupCardColor || "blue").toLowerCase()
         return colorPalette[value] || colorPalette.blue
@@ -113,101 +159,102 @@ Item {
     Rectangle {
         id: cardFace
         anchors.fill: parent
-        radius: cardMinDim * 0.12
+        radius: cardMinDim * 0.03
         color: powerup.powerupIsCustom ? "#1f2f46" : "#241a33"
         border.width: Math.max(1, cardMinDim * 0.02)
         border.color: cardColorHex()
         antialiasing: true
 
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: cardMargin
-            spacing: sectionSpacing
-            Layout.alignment: Qt.AlignHCenter
+        Item {
+            id: blockLayer
+            anchors {
+                top: parent.top
+                left: parent.left
+                right: parent.right
+            }
+            height: parent.height * 0.5
+            visible: card.isBlocksTargetSpec
+            opacity: 0.75
+            clip: true
+            z: 1
+
+            readonly property real gridPadding: Math.min(width, height) * 0.08
+            readonly property real availableWidth: Math.max(0, width - gridPadding * 2)
+            readonly property real availableHeight: Math.max(0, height - gridPadding * 2)
+            readonly property real gridSide: Math.min(availableWidth, availableHeight)
+
+            Grid {
+                id: blockGrid
+                anchors.top: parent.top
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.topMargin: blockLayer.gridPadding
+                width: blockLayer.gridSide
+                height: width
+                rows: 6
+                columns: 6
+                rowSpacing: width * 0.02
+                columnSpacing: width * 0.02
+
+                Repeater {
+                    model: blockGrid.rows * blockGrid.columns
+                    delegate: Rectangle {
+                        readonly property int row: Math.floor(index / blockGrid.columns)
+                        readonly property int column: index % blockGrid.columns
+                        readonly property bool isSelected: targetedBlocksContains(row, column)
+                        readonly property real cellSize: (blockGrid.width - (blockGrid.columns - 1) * blockGrid.columnSpacing) / blockGrid.columns
+                        width: cellSize
+                        height: cellSize
+                        radius: cellSize * 0.2
+                        color: isSelected ? cardColorHex() : unselectedBlockColor()
+                        border.width: isSelected ? 0 : Math.max(1, cellSize * 0.05)
+                        border.color: "#24364d"
+                    }
+                }
+            }
+        }
+
+        Item {
+            id: iconContainer
+            anchors.centerIn: parent
+            width: iconOverlaySize
+            height: width
+            z: 2
 
             Rectangle {
-                id: iconPanel
-                Layout.fillWidth: true
-                Layout.preferredHeight: iconHeight
-                radius: cardMinDim * 0.12
-                color: "#0d1524"
-                border.width: Math.max(1, cardMinDim * 0.015)
-                border.color: cardColorHex()
-                antialiasing: true
-
-                UI.PowerupIconSprite {
-                    anchors.centerIn: parent
-                    width: parent.width * 0.78
-                    height: width
-                    iconIndex: powerup.powerupIcon
-                }
+                id: cardsTargetFrame
+                anchors.centerIn: parent
+                width: parent.width * 1.1
+                height: parent.height * 1.1
+                radius: width * 0.15
+                color: Qt.rgba(15 / 255, 23 / 255, 37 / 255, 0.55)
+                border.width: Math.max(1, width * 0.05)
+                border.color: cardsTargetBorderColor
+                visible: card.isCardsTargetSpec
+                z: -1
             }
 
-            Rectangle {
-                id: detailPanel
-                Layout.fillWidth: true
-                Layout.preferredHeight: cardHeight * 0.28
-                radius: cardMinDim * 0.08
-                color: "#101a2b"
-                border.width: Math.max(1, cardMinDim * 0.015)
-                border.color: "#0f1725"
-                antialiasing: true
-
-                Loader {
-                    anchors.fill: parent
-                    sourceComponent: powerup.powerupTargetSpec === powerup.targetSpecs.Blocks ? blocksIcon : detailPattern
-                }
+            UI.PowerupIconSprite {
+                id: overlayIcon
+                anchors.centerIn: parent
+                width: parent.width
+                height: width
+                iconIndex: powerup.powerupIcon
+                opacity: 1
             }
+        }
 
-            Item {
-                id: energyBar
-                Layout.fillWidth: true
-                Layout.preferredHeight: Math.max(6, cardHeight * 0.13)
-
-                Rectangle {
-                    id: energyBarBackground
-                    anchors.fill: parent
-                    radius: height / 2
-                    color: "#0b1019"
-                    border.width: Math.max(1, height * 0.1)
-                    border.color: "#04070c"
-                    opacity: 0.9
-                }
-
-                Rectangle {
-                    id: energyCapacityFill
-                    anchors {
-                        left: energyBarBackground.left
-                        top: energyBarBackground.top
-                        bottom: energyBarBackground.bottom
-                    }
-                    width: energyBarBackground.width * energyCostRatio
-                    radius: energyBarBackground.radius
-                    color: Qt.rgba(0.4, 0.58, 0.76, 0.35)
-                    visible: energyCostRatio > 0
-                }
-
-                Rectangle {
-                    id: energyRuntimeFill
-                    anchors {
-                        left: energyBarBackground.left
-                        top: energyBarBackground.top
-                        bottom: energyBarBackground.bottom
-                    }
-                    width: energyBarBackground.width * energyCostRatio * runtimeEnergyProgress
-                    radius: energyBarBackground.radius
-                    color: cardColorHex()
-                    opacity: 0.9
-                    visible: energyCostRatio > 0
-                }
-
-                Text {
-                    anchors.centerIn: energyBarBackground
-                    text: "\u26A1"
-                    font.pixelSize: Math.max(8, energyIconSize * 0.6)
-                    color: "#e0f7fa"
-                }
-            }
+        Text {
+            id: relativeAreaLabel
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: cardMinDim * 0.08
+            visible: card.isRelativeAreaTargetSpec
+            color: "#cfd8dc"
+            wrapMode: Text.WordWrap
+            horizontalAlignment: Text.AlignHCenter
+            font.pixelSize: Math.max(10, cardMinDim * 0.18)
+            text: relativeAreaSummary()
         }
     }
 
@@ -220,60 +267,4 @@ Item {
         cursorShape: Qt.PointingHandCursor
     }
 
-    Component {
-        id: blocksIcon
-        Item {
-            anchors.fill: parent
-            readonly property real gridPadding: Math.min(width, height) * 0.08
-            Grid {
-                id: blockGrid
-                anchors.fill: parent
-                anchors.margins: gridPadding
-                rows: 6
-                columns: 6
-                rowSpacing: gridPadding * 0.3
-                columnSpacing: gridPadding * 0.3
-                Repeater {
-                    model: 36
-                    delegate: Rectangle {
-                        readonly property real cellSize: (blockGrid.width - (blockGrid.columns - 1) * blockGrid.columnSpacing) / blockGrid.columns
-                        width: cellSize
-                        height: cellSize
-                        color: targetedBlocksContains(Math.floor(index / 6), index % 6) ? cardColorHex() : unselectedBlockColor()
-                        border.width: targetedBlocksContains(Math.floor(index / 6), index % 6) ? 0 : Math.max(1, cellSize * 0.05)
-                        border.color: "#24364d"
-                        radius: cellSize * 0.2
-                    }
-                }
-            }
-        }
-    }
-
-    Component {
-        id: detailPattern
-        Item {
-            anchors.fill: parent
-
-            Repeater {
-                model: 5
-                delegate: Rectangle {
-                    width: parent.width * 1.5
-                    height: parent.height * 0.12
-                    x: -parent.width * 0.25
-                    y: index * parent.height * 0.18
-                    rotation: 18
-                    radius: height / 2
-                    color: Qt.rgba(0.3, 0.38, 0.52, 0.2)
-                }
-            }
-
-            Rectangle {
-                anchors.fill: parent
-                color: "transparent"
-                border.width: 1
-                border.color: Qt.rgba(0.22, 0.32, 0.48, 0.4)
-                radius: height * 0.2
-            }
-        }
-    }
 }

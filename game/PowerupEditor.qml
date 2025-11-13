@@ -27,7 +27,8 @@ Engine.GameScene {
     readonly property var targetSpecOptions: [
         { label: qsTr("Player Health"), value: editingPowerup.targetSpecs.PlayerHealth },
         { label: qsTr("Blocks"), value: editingPowerup.targetSpecs.Blocks },
-        { label: qsTr("Powerup Cards"), value: editingPowerup.targetSpecs.PlayerPowerupInGameCards }
+        { label: qsTr("Powerup Cards"), value: editingPowerup.targetSpecs.PlayerPowerupInGameCards },
+        { label: qsTr("Relative Grid Area"), value: editingPowerup.targetSpecs.RelativeGridArea }
     ]
 
     readonly property var operationOptions: [
@@ -94,11 +95,46 @@ Engine.GameScene {
         return clone
     }
 
+    function normalizeRelativeAreaDimension(value) {
+        var dimension = Number(value)
+        if (!isFinite(dimension))
+            dimension = 1
+        dimension = Math.floor(dimension)
+        if (dimension < 1)
+            dimension = 1
+        if (dimension > 5)
+            dimension = 5
+        return dimension
+    }
+
+    function normalizeRelativeAreaDistance(value) {
+        var distance = Number(value)
+        if (!isFinite(distance))
+            distance = 6
+        distance = Math.floor(distance)
+        if (distance < -6)
+            distance = -6
+        if (distance > 6)
+            distance = 6
+        return distance
+    }
+
+    function cloneRelativeAreaSpecData(data) {
+        var source = data && typeof data === "object" ? data : {}
+        return {
+            rows: normalizeRelativeAreaDimension(source.rows !== undefined ? source.rows : source.rowCount),
+            columns: normalizeRelativeAreaDimension(source.columns !== undefined ? source.columns : source.colCount),
+            distance: normalizeRelativeAreaDistance(source.distance !== undefined ? source.distance : source.rowOffset)
+        }
+    }
+
     function cloneEnergySpecData(spec, specData) {
         if (spec === editingPowerup.targetSpecs.Blocks)
             return cloneBlockArray(specData)
         if (spec === editingPowerup.targetSpecs.PlayerPowerupInGameCards)
             return specData
+        if (spec === editingPowerup.targetSpecs.RelativeGridArea)
+            return cloneRelativeAreaSpecData(specData)
         return null
     }
 
@@ -239,7 +275,9 @@ Engine.GameScene {
                     ? cloneBlockArray(editingPowerup.powerupTargetSpecData)
                     : editingPowerup.powerupTargetSpec === editingPowerup.targetSpecs.PlayerPowerupInGameCards
                         ? editingPowerup.powerupTargetSpecData
-                        : null,
+                        : editingPowerup.powerupTargetSpec === editingPowerup.targetSpecs.RelativeGridArea
+                            ? cloneRelativeAreaSpecData(editingPowerup.powerupTargetSpecData)
+                            : null,
             powerupCardHealth: editingPowerup.powerupCardHealth,
             powerupActualAmount: editingPowerup.powerupActualAmount,
             powerupOperation: editingPowerup.powerupOperation,
@@ -694,6 +732,38 @@ Engine.GameScene {
                                 }
                             }
                         }
+                    }
+                }
+
+                ColumnLayout {
+                    visible: editingPowerup.powerupTargetSpec === editingPowerup.targetSpecs.RelativeGridArea
+                    spacing: 8
+                    Layout.fillWidth: true
+
+                    Text {
+                        text: qsTr("Relative Grid Area")
+                        color: "#ffffff"
+                    }
+
+                    Text {
+                        text: qsTr("Configure a rectangular zone that mirrors the hero along the launch direction. The effect wraps across boards when targeting the enemy.")
+                        color: "#b0bec5"
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+
+                    UI.RelativeAreaSpecEditor {
+                        Layout.fillWidth: true
+                        specData: editingPowerup.powerupTargetSpecData
+                        targetIsEnemy: editingPowerup.powerupTarget === editingPowerup.targets.Enemy
+                        onSpecChanged: editingPowerup.powerupTargetSpecData = spec
+                    }
+
+                    Text {
+                        text: qsTr("Energy cost rises with each targeted cell. Areas extending past the 6x6 grid are automatically clipped.")
+                        color: "#90a4ae"
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
                     }
                 }
             }
