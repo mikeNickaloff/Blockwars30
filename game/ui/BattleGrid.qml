@@ -1310,6 +1310,36 @@ Item {
         return wrapper ? wrapper.entry : null;
     }
 
+    function supportsPendingHealth(entry) {
+        if (!entry)
+            return false;
+        if (entry.hasOwnProperty !== undefined && typeof entry.hasOwnProperty === "function")
+            return entry.hasOwnProperty("pendingHealth");
+        return entry.pendingHealth !== undefined;
+    }
+
+    function getEntryEffectiveHealth(entry) {
+        if (!entry)
+            return 0;
+        if (supportsPendingHealth(entry)) {
+            var pending = entry.pendingHealth;
+            if (pending !== undefined && pending !== null)
+                return pending;
+        }
+        if (entry.health === undefined || entry.health === null)
+            return 0;
+        return entry.health;
+    }
+
+    function assignEntryHealthDeferred(entry, value) {
+        if (!entry)
+            return;
+        if (supportsPendingHealth(entry))
+            entry.pendingHealth = value;
+        else
+            entry.health = value;
+    }
+
     function getEntryAt(row, column) {
         return getBlockEntryAt(row, column);
     }
@@ -1667,8 +1697,8 @@ Item {
             if (!scanEntry)
                 continue;
             const scanState = normalizeStateName(scanEntry.blockState);
-            const scanHealth = scanEntry.health;
-            const healthActive = (scanHealth === undefined || scanHealth === null || scanHealth > 0);
+            const scanHealth = getEntryEffectiveHealth(scanEntry);
+            const healthActive = scanHealth > 0;
             if (healthActive && scanState !== "destroyed" && scanState !== "waitandexplode") {
                 columnClearedBeforeImpact = false;
                 break;
@@ -1707,15 +1737,16 @@ Item {
 
             if (entry.health === undefined || entry.health === null)
                 entry.health = 100;
+            if (supportsPendingHealth(entry) && (entry.pendingHealth === undefined || entry.pendingHealth === null))
+                entry.pendingHealth = entry.health;
 
-            if (entry.health <= 0)
+            const targetHealth = getEntryEffectiveHealth(entry);
+            if (targetHealth <= 0)
                 continue;
-
-            const targetHealth = entry.health;
             if (remaining >= targetHealth) {
                 remaining -= targetHealth;
                 entry.energyAmount = Math.max(entry.energyAmount || 0, targetHealth);
-                entry.health = 0;
+                assignEntryHealthDeferred(entry, 0);
                 entry.blockState = "waitAndExplode";
                 damagedBlocks.push({
                                         row: row,
@@ -1728,7 +1759,8 @@ Item {
                     shakeEffector.triggerImpact();
                 lastImpact = { row: row, column: column };
             } else {
-                entry.health = targetHealth - remaining;
+                var survivingHealth = Math.max(0, targetHealth - remaining);
+                assignEntryHealthDeferred(entry, survivingHealth);
                 damagedBlocks.push({
                                         row: row,
                                         column: column,
@@ -1747,7 +1779,7 @@ Item {
             if (!verifyEntry)
                 continue;
             const verifyState = normalizeStateName(verifyEntry.blockState);
-            const verifyHealthActive = (verifyEntry.health === undefined || verifyEntry.health === null || verifyEntry.health > 0);
+            const verifyHealthActive = getEntryEffectiveHealth(verifyEntry) > 0;
             if (verifyHealthActive && verifyState !== "destroyed" && verifyState !== "waitandexplode") {
                 columnHasBlocksAfter = true;
                 break;
@@ -1804,6 +1836,44 @@ Item {
             columnCleared: columnClearedBeforeImpact,
             sourceBlockColor: payload.blockColor || ""
         };
+    }
+
+    function applyLaunchOutcome(payload, damageResult) {
+        if (!payload)
+            return;
+        var row = Number(payload.row);
+        var column = Number(payload.column);
+        if (!isFinite(row) || !isFinite(column))
+            return;
+        row = Math.floor(row);
+        column = Math.floor(column);
+        if (row < 0 || row >= gridRows || column < 0 || column >= gridCols)
+            return;
+        ensureMatrix();
+        var entry = getBlockEntryAt(row, column);
+        if (!entry)
+            return;
+        if (normalizeStateName(entry.blockState) !== "launch" && normalizeStateName(entry.blockState) !== "launchnoexplode")
+            return;
+        var firstImpact = null;
+        if (damageResult && Array.isArray(damageResult.blocksDamaged)) {
+            for (var i = 0; i < damageResult.blocksDamaged.length; ++i) {
+                var impact = damageResult.blocksDamaged[i];
+                if (!impact)
+                    continue;
+                firstImpact = impact;
+                break;
+            }
+        }
+        if (damageResult) {
+            var resultingHealth = (damageResult.remainingHealth !== undefined && damageResult.remainingHealth !== null)
+                    ? Math.max(0, Math.floor(damageResult.remainingHealth))
+                    : 0;
+            assignEntryHealthDeferred(entry, resultingHealth);
+        }
+
+        if (firstImpact && !firstImpact.destroyed)
+            entry.blockState = "launchNoExplode";
     }
 
     function launchMatchedBlocks() {

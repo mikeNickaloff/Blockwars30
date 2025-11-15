@@ -43,7 +43,7 @@ Engine.GameScene {
 
     Data.PowerupItem {
         id: editingPowerup
-        onEnergyRecalculated: powerupEditor.handleEnergyRecalculated(energyRequired)
+        onEnergyRecalculated: function(energyRequired) { powerupEditor.handleEnergyRecalculated(energyRequired) }
     }
 
     Rectangle {
@@ -111,7 +111,9 @@ Engine.GameScene {
                                                       editingPowerup.powerupTargetSpecData),
             powerupCardHealth: editingPowerup.powerupCardHealth,
             powerupActualAmount: editingPowerup.powerupActualAmount,
-            powerupOperation: editingPowerup.powerupOperation
+            powerupOperation: editingPowerup.powerupOperation,
+            powerupRepeatingAttack: editingPowerup.powerupRepeatingAttack,
+            powerupRepeatCount: editingPowerup.powerupRepeatCount
         }
     }
 
@@ -126,6 +128,10 @@ Engine.GameScene {
         editingPowerup.powerupCardHealth = lastValidEnergyState.powerupCardHealth
         editingPowerup.powerupActualAmount = lastValidEnergyState.powerupActualAmount
         editingPowerup.powerupOperation = lastValidEnergyState.powerupOperation
+        editingPowerup.powerupRepeatingAttack = !!lastValidEnergyState.powerupRepeatingAttack
+        editingPowerup.powerupRepeatCount = lastValidEnergyState.powerupRepeatCount !== undefined
+                ? lastValidEnergyState.powerupRepeatCount
+                : 1
         editingPowerup.updateEnergyRequirement()
         restoringEnergyState = false
         lastValidEnergyState = captureEnergyState()
@@ -195,6 +201,8 @@ Engine.GameScene {
         editingPowerup.powerupHeroRowSpan = record.powerupHeroRowSpan || 1
         editingPowerup.powerupHeroColSpan = record.powerupHeroColSpan || 1
         editingPowerup.powerupIcon = record.powerupIcon !== undefined ? record.powerupIcon : 0
+        editingPowerup.powerupRepeatingAttack = record.powerupRepeatingAttack !== undefined ? !!record.powerupRepeatingAttack : false
+        editingPowerup.powerupRepeatCount = record.powerupRepeatCount !== undefined ? record.powerupRepeatCount : 1
         editingPowerup.updateEnergyRequirement()
     }
 
@@ -220,6 +228,8 @@ Engine.GameScene {
         editingPowerup.powerupHeroRowSpan = 1
         editingPowerup.powerupHeroColSpan = 1
         editingPowerup.powerupIcon = 0
+        editingPowerup.powerupRepeatingAttack = false
+        editingPowerup.powerupRepeatCount = 1
         editingPowerup.updateEnergyRequirement()
     }
 
@@ -247,7 +257,9 @@ Engine.GameScene {
             powerupCardColor: editingPowerup.powerupCardColor,
             powerupHeroRowSpan: editingPowerup.powerupHeroRowSpan,
             powerupHeroColSpan: editingPowerup.powerupHeroColSpan,
-            powerupIcon: editingPowerup.powerupIcon
+            powerupIcon: editingPowerup.powerupIcon,
+            powerupRepeatingAttack: editingPowerup.powerupRepeatingAttack,
+            powerupRepeatCount: editingPowerup.powerupRepeatCount
         }
     }
 
@@ -604,6 +616,45 @@ Engine.GameScene {
                     CheckBox {
                         checked: editingPowerup.powerupIsCustom
                         onToggled: editingPowerup.powerupIsCustom = checked
+                    }
+
+                    Label { text: qsTr("Repeating Attack") }
+                    CheckBox {
+                        checked: editingPowerup.powerupRepeatingAttack
+                        onToggled: editingPowerup.powerupRepeatingAttack = checked
+                    }
+
+                    Label { text: qsTr("Number of Times") }
+                    ColumnLayout {
+                        Layout.preferredWidth: 350
+                        Layout.fillWidth: true
+                        spacing: 4
+                        Text {
+                            text: qsTr("Repeat Count: %1").arg(editingPowerup.powerupRepeatCount)
+                            color: "#e8eaf6"
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Slider {
+                                id: repeatCountSlider
+                                Layout.fillWidth: true
+                                enabled: editingPowerup.powerupRepeatingAttack
+                                from: 1
+                                to: editingPowerup.maxRepeatCount
+                                stepSize: 1
+                                snapMode: Slider.SnapOnRelease
+                                value: editingPowerup.powerupRepeatCount
+                                onMoved: editingPowerup.powerupRepeatCount = Math.round(value)
+                                onValueChanged: {
+                                    if (!pressed)
+                                        editingPowerup.powerupRepeatCount = Math.round(value)
+                                }
+                            }
+                            Label {
+                                text: editingPowerup.powerupRepeatCount
+                                color: editingPowerup.powerupRepeatingAttack ? "#64ffda" : "#455a64"
+                            }
+                        }
                     }
                 }
 

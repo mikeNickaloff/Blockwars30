@@ -8,6 +8,7 @@ QtObject {
     property string databaseVersion: "1.0"
     property string databaseLabel: "Blockwars Powerup Database"
     property int estimatedSize: 5 * 1024 * 1024 // 5 MB allocation to keep headroom for future data
+    property int maxRepeatCount: 5
     property var __connection: null
 
     signal schemaReady()
@@ -77,6 +78,18 @@ QtObject {
         return icon
     }
 
+    function normalizeRepeatCount(value) {
+        var repeats = Number(value)
+        if (!isFinite(repeats))
+            repeats = 1
+        repeats = Math.floor(repeats)
+        if (repeats < 1)
+            repeats = 1
+        if (repeats > maxRepeatCount)
+            repeats = maxRepeatCount
+        return repeats
+    }
+
     function ensureSchema() {
         withTransaction(function(tx) {
             tx.executeSql(
@@ -94,6 +107,8 @@ QtObject {
                         "heroRowSpan INTEGER NOT NULL DEFAULT 1, " +
                         "heroColSpan INTEGER NOT NULL DEFAULT 1, " +
                         "cardIcon INTEGER NOT NULL DEFAULT 0, " +
+                        "repeatEnabled INTEGER NOT NULL DEFAULT 0, " +
+                        "repeatCount INTEGER NOT NULL DEFAULT 1, " +
                         "createdAt TEXT NOT NULL DEFAULT (datetime('now')), " +
                         "updatedAt TEXT NOT NULL DEFAULT (datetime('now'))" +
                         ")")
@@ -104,6 +119,8 @@ QtObject {
             var hasHeroRowSpan = false
             var hasHeroColSpan = false
             var hasCardIcon = false
+            var hasRepeatEnabled = false
+            var hasRepeatCount = false
             for (var i = 0; i < tableInfo.rows.length; ++i) {
                 var column = tableInfo.rows.item(i)
                 if (!column)
@@ -116,6 +133,10 @@ QtObject {
                     hasHeroColSpan = true
                 else if (column.name === 'cardIcon')
                     hasCardIcon = true
+                else if (column.name === 'repeatEnabled')
+                    hasRepeatEnabled = true
+                else if (column.name === 'repeatCount')
+                    hasRepeatCount = true
             }
             if (!hasCardColor)
                 tx.executeSql("ALTER TABLE Powerups ADD COLUMN cardColor TEXT NOT NULL DEFAULT 'blue'")
@@ -125,6 +146,10 @@ QtObject {
                 tx.executeSql("ALTER TABLE Powerups ADD COLUMN heroColSpan INTEGER NOT NULL DEFAULT 1")
             if (!hasCardIcon)
                 tx.executeSql("ALTER TABLE Powerups ADD COLUMN cardIcon INTEGER NOT NULL DEFAULT 0")
+            if (!hasRepeatEnabled)
+                tx.executeSql("ALTER TABLE Powerups ADD COLUMN repeatEnabled INTEGER NOT NULL DEFAULT 0")
+            if (!hasRepeatCount)
+                tx.executeSql("ALTER TABLE Powerups ADD COLUMN repeatCount INTEGER NOT NULL DEFAULT 1")
             tx.executeSql(
                         "CREATE TABLE IF NOT EXISTS PlayerLoadout (" +
                         "slot INTEGER PRIMARY KEY CHECK(slot >= 0 AND slot < 4), " +
@@ -141,13 +166,13 @@ QtObject {
     function fetchAllPowerups() {
         ensureSchema()
         var records = queryAll(
-                    "SELECT uuid, name, target, targetSpec, targetSpecData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan, cardIcon " +
+                    "SELECT uuid, name, target, targetSpec, targetSpecData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan, cardIcon, repeatEnabled, repeatCount " +
                     "FROM Powerups ORDER BY name")
 
         if (!records.length) {
             seedBuiltinsIfNeeded()
             records = queryAll(
-                        "SELECT uuid, name, target, targetSpec, targetSpecData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan, cardIcon " +
+                        "SELECT uuid, name, target, targetSpec, targetSpecData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan, cardIcon, repeatEnabled, repeatCount " +
                         "FROM Powerups ORDER BY name")
         }
 
@@ -173,6 +198,14 @@ QtObject {
 
         var heroRows = normalizeHeroSpan(row.heroRowSpan || row.powerupHeroRowSpan || 1)
         var heroCols = normalizeHeroSpan(row.heroColSpan || row.powerupHeroColSpan || 1)
+        var repeatEnabledValue = row.repeatEnabled
+        if (repeatEnabledValue === undefined && row.powerupRepeatingAttack !== undefined)
+            repeatEnabledValue = row.powerupRepeatingAttack
+        var repeatCountValue = row.repeatCount
+        if (repeatCountValue === undefined && row.powerupRepeatCount !== undefined)
+            repeatCountValue = row.powerupRepeatCount
+        var normalizedRepeat = normalizeRepeatCount(repeatCountValue !== undefined ? repeatCountValue : 1)
+        var repeatEnabled = !!Number(repeatEnabledValue || 0)
 
         return {
             powerupUuid: row.uuid || row.powerupUuid || "",
@@ -187,7 +220,9 @@ QtObject {
             powerupCardColor: (row.cardColor || row.powerupCardColor || "blue"),
             powerupHeroRowSpan: heroRows,
             powerupHeroColSpan: heroCols,
-            powerupIcon: normalizeIconIndex(row.cardIcon !== undefined ? row.cardIcon : row.powerupIcon)
+            powerupIcon: normalizeIconIndex(row.cardIcon !== undefined ? row.cardIcon : row.powerupIcon),
+            powerupRepeatingAttack: repeatEnabled,
+            powerupRepeatCount: normalizedRepeat
         }
     }
 
@@ -206,8 +241,8 @@ QtObject {
                     serialized = JSON.stringify(powerup.powerupTargetSpecData)
 
                 tx.executeSql(
-                            "INSERT OR REPLACE INTO Powerups (uuid, name, target, targetSpec, targetSpecData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan, cardIcon) " +
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            "INSERT OR REPLACE INTO Powerups (uuid, name, target, targetSpec, targetSpecData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan, cardIcon, repeatEnabled, repeatCount) " +
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             [
                                 powerup.powerupUuid,
                                 powerup.powerupName,
@@ -221,7 +256,9 @@ QtObject {
                                 (powerup.powerupCardColor || "blue"),
                                 normalizeHeroSpan(powerup.powerupHeroRowSpan || 1),
                                 normalizeHeroSpan(powerup.powerupHeroColSpan || 1),
-                                powerup.powerupIcon || 0
+                                powerup.powerupIcon || 0,
+                                powerup.powerupRepeatingAttack ? 1 : 0,
+                                normalizeRepeatCount(powerup.powerupRepeatCount || 1)
                             ])
             }
         })
@@ -261,7 +298,7 @@ QtObject {
         if (!uuid)
             return null
         var rows = queryAll(
-                    "SELECT uuid, name, target, targetSpec, targetSpecData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan, cardIcon " +
+                    "SELECT uuid, name, target, targetSpec, targetSpecData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan, cardIcon, repeatEnabled, repeatCount " +
                     "FROM Powerups WHERE uuid = ?",
                     [uuid])
         if (!rows.length)
@@ -284,12 +321,14 @@ QtObject {
         var heroRowSpan = normalizeHeroSpan(record.powerupHeroRowSpan || 1)
         var heroColSpan = normalizeHeroSpan(record.powerupHeroColSpan || 1)
         var cardIcon = normalizeIconIndex(record.powerupIcon || 0)
+        var repeatEnabled = record.powerupRepeatingAttack ? 1 : 0
+        var repeatCount = normalizeRepeatCount(record.powerupRepeatCount || 1)
 
         withTransaction(function(tx) {
             tx.executeSql(
-                        "INSERT OR REPLACE INTO Powerups (uuid, name, target, targetSpec, targetSpecData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan, cardIcon) " +
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        [uuid, name, target, targetSpec, specData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan, cardIcon])
+                        "INSERT OR REPLACE INTO Powerups (uuid, name, target, targetSpec, targetSpecData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan, cardIcon, repeatEnabled, repeatCount) " +
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [uuid, name, target, targetSpec, specData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan, cardIcon, repeatEnabled, repeatCount])
         })
 
         return fetchPowerup(uuid)
@@ -312,18 +351,20 @@ QtObject {
         var heroRowSpan = normalizeHeroSpan(powerup.powerupHeroRowSpan || 1)
         var heroColSpan = normalizeHeroSpan(powerup.powerupHeroColSpan || 1)
         var cardIcon = normalizeIconIndex(powerup.powerupIcon || 0)
+        var repeatEnabled = powerup.powerupRepeatingAttack ? 1 : 0
+        var repeatCount = normalizeRepeatCount(powerup.powerupRepeatCount || 1)
 
         withTransaction(function(tx) {
             var result = tx.executeSql(
-                        "UPDATE Powerups SET name = ?, target = ?, targetSpec = ?, targetSpecData = ?, cardHealth = ?, amount = ?, operation = ?, isCustom = ?, cardColor = ?, heroRowSpan = ?, heroColSpan = ?, cardIcon = ?, updatedAt = datetime('now') " +
+                        "UPDATE Powerups SET name = ?, target = ?, targetSpec = ?, targetSpecData = ?, cardHealth = ?, amount = ?, operation = ?, isCustom = ?, cardColor = ?, heroRowSpan = ?, heroColSpan = ?, cardIcon = ?, repeatEnabled = ?, repeatCount = ?, updatedAt = datetime('now') " +
                         "WHERE uuid = ?",
-                        [name, target, targetSpec, specData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan, cardIcon, uuid])
+                        [name, target, targetSpec, specData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan, cardIcon, repeatEnabled, repeatCount, uuid])
 
             if (!result.rowsAffected)
                 tx.executeSql(
-                            "INSERT OR REPLACE INTO Powerups (uuid, name, target, targetSpec, targetSpecData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan, cardIcon) " +
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                            [uuid, name, target, targetSpec, specData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan, cardIcon])
+                            "INSERT OR REPLACE INTO Powerups (uuid, name, target, targetSpec, targetSpecData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan, cardIcon, repeatEnabled, repeatCount) " +
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            [uuid, name, target, targetSpec, specData, cardHealth, amount, operation, isCustom, cardColor, heroRowSpan, heroColSpan, cardIcon, repeatEnabled, repeatCount])
         })
 
         return fetchPowerup(uuid)
@@ -366,7 +407,8 @@ QtObject {
         var rows = queryAll(
                     "SELECT l.slot AS slot, p.uuid AS uuid, p.name AS name, p.target AS target, p.targetSpec AS targetSpec, " +
                     "p.targetSpecData AS targetSpecData, p.cardHealth AS cardHealth, p.amount AS amount, p.operation AS operation, " +
-                    "p.isCustom AS isCustom, p.cardColor AS cardColor, p.heroRowSpan AS heroRowSpan, p.heroColSpan AS heroColSpan, p.cardIcon AS cardIcon " +
+                    "p.isCustom AS isCustom, p.cardColor AS cardColor, p.heroRowSpan AS heroRowSpan, p.heroColSpan AS heroColSpan, p.cardIcon AS cardIcon, " +
+                    "p.repeatEnabled AS repeatEnabled, p.repeatCount AS repeatCount " +
                     "FROM PlayerLoadout l LEFT JOIN Powerups p ON p.uuid = l.powerupUuid ORDER BY l.slot")
         var normalized = normalizeLoadoutRows(rows)
         var populateDefaults = true
@@ -428,7 +470,9 @@ QtObject {
                 powerupCardColor: "red",
                 powerupHeroRowSpan: 2,
                 powerupHeroColSpan: 2,
-                powerupIcon: 0
+                powerupIcon: 0,
+                powerupRepeatingAttack: false,
+                powerupRepeatCount: 1
             },
             {
                 powerupUuid: "builtin-aegis-surge",
@@ -443,7 +487,9 @@ QtObject {
                 powerupCardColor: "green",
                 powerupHeroRowSpan: 1,
                 powerupHeroColSpan: 1,
-                powerupIcon: 1
+                powerupIcon: 1,
+                powerupRepeatingAttack: false,
+                powerupRepeatCount: 1
             },
             {
                 powerupUuid: "builtin-arcane-draw",
@@ -458,7 +504,9 @@ QtObject {
                 powerupCardColor: "blue",
                 powerupHeroRowSpan: 1,
                 powerupHeroColSpan: 1,
-                powerupIcon: 2
+                powerupIcon: 2,
+                powerupRepeatingAttack: false,
+                powerupRepeatCount: 1
             }
         ]
     }

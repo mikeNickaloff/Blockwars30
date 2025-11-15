@@ -140,6 +140,8 @@ Item {
                     width: parent.width * 0.78
                     height: width
                     iconIndex: powerup.powerupIcon
+                    transformOrigin: Item.Center
+                    scale: 0.25
                 }
             }
 
@@ -224,6 +226,8 @@ Item {
         id: blocksIcon
         Item {
             anchors.fill: parent
+            transformOrigin: Item.Center
+            scale: 0.25
             readonly property real gridPadding: Math.min(width, height) * 0.08
             Grid {
                 id: blockGrid

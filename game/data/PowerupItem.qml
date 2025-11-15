@@ -32,7 +32,9 @@ QtObject {
     property int powerupHeroRowSpan: 1
     property int powerupHeroColSpan: 1
     property int powerupIcon: 0
-
+    readonly property int maxRepeatCount: 5
+    property bool powerupRepeatingAttack: false
+    property int powerupRepeatCount: 1
     property int powerupCardEnergyRequired: 0
 
     signal energyRecalculated(int energyRequired)
@@ -91,7 +93,9 @@ QtObject {
         var targetMultiplier = powerupTarget === targets.Enemy ? 0.5 : 0.5
         var healthBonus = Math.max(0, powerupCardHealth)
 
-        var energy = (base + healthBonus * 0.5) * specMultiplier * operationMultiplier * targetMultiplier
+        var repeatCount = powerupRepeatingAttack ? normalizedRepeatCount(powerupRepeatCount) : 0
+        var activationMultiplier = 1 + repeatCount
+        var energy = (base + healthBonus * 0.5) * specMultiplier * operationMultiplier * targetMultiplier * activationMultiplier
         return Math.ceil(energy)
     }
 
@@ -117,6 +121,15 @@ QtObject {
     onPowerupCardHealthChanged: updateEnergyRequirement()
     onPowerupActualAmountChanged: updateEnergyRequirement()
     onPowerupOperationChanged: updateEnergyRequirement()
+    onPowerupRepeatingAttackChanged: updateEnergyRequirement()
+    onPowerupRepeatCountChanged: {
+        var normalizedRepeats = normalizedRepeatCount(powerupRepeatCount)
+        if (normalizedRepeats !== powerupRepeatCount) {
+            powerupRepeatCount = normalizedRepeats
+            return
+        }
+        updateEnergyRequirement()
+    }
 
     function normalizedHeroSpan(value) {
         var span = Number(value)
@@ -153,6 +166,18 @@ QtObject {
         return normalized
     }
 
+    function normalizedRepeatCount(value) {
+        var repeatCount = Number(value)
+        if (!isFinite(repeatCount))
+            repeatCount = 1
+        repeatCount = Math.floor(repeatCount)
+        if (repeatCount < 1)
+            repeatCount = 1
+        if (repeatCount > maxRepeatCount)
+            repeatCount = maxRepeatCount
+        return repeatCount
+    }
+
     onPowerupIconChanged: {
         var normalizedIcon = normalizePowerupIcon(powerupIcon)
         if (normalizedIcon !== powerupIcon)
@@ -163,6 +188,7 @@ QtObject {
         ensureSpecDataDefaults()
         powerupOperation = powerupTarget === targets.Enemy ? operations.Decrease : operations.Increase
         ensureHeroSpanDefaults()
+        powerupRepeatCount = normalizedRepeatCount(powerupRepeatCount)
         updateEnergyRequirement()
     }
 }

@@ -20,6 +20,7 @@ Engine.GameScene {
     property var opponentLoadout: []
     property var providedLoadout: []
     property var sidebarRegistry: ({})
+    property var repeatingActivations: []
     readonly property int loadoutSlots: 4
     property bool battleResolved: false
     property string battleOutcome: ""
@@ -67,6 +68,20 @@ Engine.GameScene {
         if (currentTurn == "top") { return battleGrid_bottom } else { return battleGrid_top }
     }
 
+    function opponentTurn(turn) {
+        return turn === "top" ? "bottom" : "top";
+    }
+
+    function gridByUuid(uuid) {
+        if (!uuid)
+            return null;
+        if (battleGrid_top && battleGrid_top.uuid === uuid)
+            return battleGrid_top;
+        if (battleGrid_bottom && battleGrid_bottom.uuid === uuid)
+            return battleGrid_bottom;
+        return null;
+    }
+
     function receiveBattleGridLaunchPayload(payload) {
         if (battleResolved)
             return;
@@ -88,6 +103,8 @@ Engine.GameScene {
 
         var damageResult = targetBattleGrid.calculateLaunchDamage(payload);
         processLaunchDamageRewards(sourceGrid, damageResult);
+        if (sourceGrid && typeof sourceGrid.applyLaunchOutcome === "function")
+            sourceGrid.applyLaunchOutcome(payload, damageResult);
     }
 
     function forwardBlockLaunchEndPoint(payload, endX, endY) {
@@ -140,6 +157,11 @@ Engine.GameScene {
             offense.requestState("idle");
         turnStateMonitor.stop();
         turnCoordinator = { offense: null, defense: null };
+        var offenseTurn = offense === battleGrid_top ? "top"
+                        : offense === battleGrid_bottom ? "bottom"
+                        : null;
+        if (offenseTurn)
+            turnStartRepeatingAttacks(offenseTurn);
     }
 
     function synchronizeTurnStateIfReady() {
@@ -172,6 +194,34 @@ Engine.GameScene {
             else
                 turnStateMonitor.start();
         }
+    }
+
+    function turnStartRepeatingAttacks(turnOwner) {
+        if (battleResolved || !repeatingActivations.length || !turnOwner)
+            return;
+        var pending = [];
+        for (var i = 0; i < repeatingActivations.length; ++i) {
+            var entry = repeatingActivations[i];
+            if (!entry || entry.remaining <= 0)
+                continue;
+            if (entry.nextTurn !== turnOwner) {
+                pending.push(entry);
+                continue;
+            }
+            var executionResult = executeStoredRepeat(entry);
+            if (executionResult === null)
+                continue;
+            if (!executionResult) {
+                pending.push(entry);
+                continue;
+            }
+            entry.remaining -= 1;
+            if (entry.remaining > 0) {
+                entry.nextTurn = opponentTurn(turnOwner);
+                pending.push(entry);
+            }
+        }
+        repeatingActivations = pending;
     }
 
     function distributePostSwapCascade(payload) {
@@ -234,6 +284,7 @@ Engine.GameScene {
             opponentSidebar.interactionsEnabled = false;
         if (topGridAi)
             topGridAi.enabled = false;
+        repeatingActivations = [];
     }
 
     function presentBattleOutcome(result) {
@@ -338,6 +389,13 @@ Engine.GameScene {
             iconIndex = 0;
         if (iconIndex >= 25 && 25 > 0)
             iconIndex = iconIndex % 25;
+        var repeatEnabled = !!(record && record.powerupRepeatingAttack);
+        var repeatCount = Number(record && record.powerupRepeatCount);
+        if (!isFinite(repeatCount) || repeatCount < 1)
+            repeatCount = 1;
+        repeatCount = Math.floor(repeatCount);
+        if (repeatCount > 5)
+            repeatCount = 5;
         return {
             powerupUuid: uuid,
             powerupName: name,
@@ -352,7 +410,9 @@ Engine.GameScene {
             powerupCardColor: color,
             powerupHeroRowSpan: heroRows,
             powerupHeroColSpan: heroCols,
-            powerupIcon: iconIndex
+            powerupIcon: iconIndex,
+            powerupRepeatingAttack: repeatEnabled,
+            powerupRepeatCount: repeatCount
         };
     }
 
@@ -692,17 +752,155 @@ Engine.GameScene {
                 targetGrid.mainHealth = Math.max(0, targetGrid.mainHealth - delta);
         }
 
+        function coerceSpecArray(specData) {
+            if (!specData)
+                return [];
+            if (Array.isArray(specData))
+                return specData;
+            var coerced = [];
+            var length = specData.length !== undefined ? Number(specData.length) : NaN;
+            if (isFinite(length) && length > 0) {
+                for (var idx = 0; idx < length; ++idx) {
+                    if (specData[idx] !== undefined)
+                        coerced.push(specData[idx]);
+                }
+                return coerced;
+            }
+            for (var key in specData) {
+                if (specData.hasOwnProperty && !specData.hasOwnProperty(key))
+                    continue;
+                coerced.push(specData[key]);
+            }
+            if (coerced.length)
+                return coerced;
+            return [specData];
+        }
+
+        function normalizeBlockTargets(specData) {
+            var rawCells = coerceSpecArray(specData);
+            var cells = [];
+            for (var i = 0; i < rawCells.length; ++i) {
+                var cell = rawCells[i];
+                if (!cell)
+                    continue;
+                var rowValue = cell.row !== undefined ? cell.row : cell.r;
+                var columnValue = cell.column !== undefined ? cell.column : (cell.col !== undefined ? cell.col : cell.c);
+                if (rowValue === undefined || columnValue === undefined)
+                    continue;
+                var numericRow = Number(rowValue);
+                var numericColumn = Number(columnValue);
+                if (!isFinite(numericRow) || !isFinite(numericColumn))
+                    continue;
+                cells.push({
+                               row: Math.floor(numericRow),
+                               column: Math.floor(numericColumn)
+                           });
+            }
+            return cells;
+        }
+
+        function normalizeHeroColorSpec(specData) {
+            if (typeof specData === "string" && specData.length)
+                return specData;
+            if (specData && typeof specData.color === "string" && specData.color.length)
+                return specData.color;
+            return "blue";
+        }
+
+        function normalizedSpecPayload(spec, specData) {
+            var specKey = (spec || "PlayerHealth").toString();
+            if (specKey === "Blocks")
+                return normalizeBlockTargets(specData);
+            if (specKey === "PlayerPowerupInGameCards")
+                return normalizeHeroColorSpec(specData);
+            return null;
+        }
+
+        function cloneSpecPayload(spec, normalizedData) {
+            var specKey = (spec || "PlayerHealth").toString();
+            if (specKey === "Blocks") {
+                var clone = [];
+                if (Array.isArray(normalizedData)) {
+                    for (var i = 0; i < normalizedData.length; ++i) {
+                        var item = normalizedData[i];
+                        if (!item || item.row === undefined || item.column === undefined)
+                            continue;
+                        clone.push({ row: item.row, column: item.column });
+                    }
+                }
+                return clone;
+            }
+            if (specKey === "PlayerPowerupInGameCards")
+                return normalizedData || "blue";
+            return null;
+        }
+
+        function scheduleRepeatingActivation(cardData, sourceGrid, targetGrid, activationSummary) {
+            if (!cardData || !cardData.powerupRepeatingAttack)
+                return;
+            var repeats = Math.max(0, Math.floor(cardData.powerupRepeatCount || 0));
+            if (repeats <= 0)
+                return;
+            if (!sourceGrid || !sourceGrid.uuid)
+                return;
+            var nextTurn = opponentTurn(currentTurn);
+            if (!nextTurn)
+                return;
+            var entry = {
+                id: Factory.uid("repeat"),
+                cardData: cardData,
+                cardUuid: cardData.powerupUuid,
+                remaining: repeats,
+                nextTurn: nextTurn,
+                sourceGridUuid: sourceGrid.uuid,
+                targetGridUuid: targetGrid && targetGrid.uuid ? targetGrid.uuid : sourceGrid.uuid,
+                spec: activationSummary.spec,
+                specData: cloneSpecPayload(activationSummary.spec, activationSummary.specData),
+                amount: activationSummary.amount,
+                operation: activationSummary.operation,
+                targetType: activationSummary.targetType
+            };
+            repeatingActivations = repeatingActivations.concat(entry);
+        }
+
+        function executeStoredRepeat(entry) {
+            if (!entry || !entry.cardData)
+                return null;
+            var sourceGrid = gridByUuid(entry.sourceGridUuid);
+            if (!sourceGrid)
+                return null;
+            var targetGrid = gridByUuid(entry.targetGridUuid) || sourceGrid;
+            var options = {
+                trigger: "repeat",
+                skipEnergyDrain: true,
+                resetEnergy: false,
+                allowHeroOverride: true,
+                overrideSourceGrid: sourceGrid,
+                overrideTargetGrid: targetGrid,
+                overrideTargetType: entry.targetType,
+                overrideSpec: entry.spec,
+                overrideSpecData: entry.specData,
+                overrideAmount: entry.amount,
+                overrideOperation: entry.operation,
+                preventRepeatScheduling: true
+            };
+            var success = triggerPowerupActivation(entry.cardData, options);
+            return success;
+        }
+
         function triggerPowerupActivation(cardData, options) {
             if (!cardData) {
                 // console.log("Powerup activation gating: missing cardData");
                 return false;
             }
-            var sourceGrid = cardData.battleGrid || null;
+            var triggerInfo = options || {};
+            var allowHeroOverride = !!triggerInfo.allowHeroOverride;
+            var sourceGrid = triggerInfo.overrideSourceGrid || cardData.battleGrid || null;
             if (!sourceGrid) {
                 // console.log("Powerup activation gating: card missing battleGrid binding", cardData.powerupUuid);
                 return false;
             }
-            if (!cardData.heroPlaced || !cardData.heroAlive) {
+            if (!allowHeroOverride && (!cardData.heroPlaced || !cardData.heroAlive)) {
                 // console.log("Powerup activation gating: hero not placed or already defeated", {
                 //     heroPlaced: cardData.heroPlaced,
                 //     heroAlive: cardData.heroAlive,
@@ -725,9 +923,8 @@ Engine.GameScene {
                 return false;
             }
 
-            var triggerInfo = options || {};
-            var targetType = (cardData.powerupTarget || "Self").toString().toLowerCase();
-            var targetGrid = targetType === "enemy" ? opposingGrid(sourceGrid) : sourceGrid;
+            var targetType = (triggerInfo.overrideTargetType || cardData.powerupTarget || "Self").toString().toLowerCase();
+            var targetGrid = triggerInfo.overrideTargetGrid || (targetType === "enemy" ? opposingGrid(sourceGrid) : sourceGrid);
             if (!targetGrid) {
                 // console.log("Powerup activation gating: target grid unavailable", {
                 //     targetType: targetType,
@@ -736,9 +933,13 @@ Engine.GameScene {
                 return false;
             }
 
-            var amount = Math.max(0, Math.floor(cardData.powerupActualAmount || 0));
-            var operation = (cardData.powerupOperation || "increase").toString().toLowerCase();
-            var spec = cardData.powerupTargetSpec || "PlayerHealth";
+            var amount = triggerInfo.overrideAmount !== undefined
+                    ? Math.max(0, Math.floor(triggerInfo.overrideAmount || 0))
+                    : Math.max(0, Math.floor(cardData.powerupActualAmount || 0));
+            var operation = (triggerInfo.overrideOperation || cardData.powerupOperation || "increase").toString().toLowerCase();
+            var spec = (triggerInfo.overrideSpec || cardData.powerupTargetSpec || "PlayerHealth").toString();
+            var specDataInput = triggerInfo.overrideSpecData !== undefined ? triggerInfo.overrideSpecData : cardData.powerupTargetSpecData;
+            var normalizedSpecData = normalizedSpecPayload(spec, specDataInput);
 
             console.log("Powerup activation flow: executing spec", JSON.stringify({
                                                                                       cardUuid: cardData.powerupUuid,
@@ -750,53 +951,10 @@ Engine.GameScene {
                                                                                   }));
 
             var activationApplied = false;
-            function normalizeSpecArray(specData) {
-                if (!specData)
-                    return [];
-                if (Array.isArray(specData))
-                    return specData;
-                var coerced = [];
-                var length = specData.length !== undefined ? Number(specData.length) : NaN;
-                if (isFinite(length) && length > 0) {
-                    for (var idx = 0; idx < length; ++idx) {
-                        if (specData[idx] !== undefined)
-                            coerced.push(specData[idx]);
-                    }
-                    return coerced;
-                }
-                for (var key in specData) {
-                    if (specData.hasOwnProperty && !specData.hasOwnProperty(key))
-                        continue;
-                    coerced.push(specData[key]);
-                }
-                if (coerced.length)
-                    return coerced;
-                return [specData];
-            }
-
             switch (spec) {
             case "Blocks": {
                 if (targetGrid.applyBlockDeltaList) {
-                    var rawCells = normalizeSpecArray(cardData.powerupTargetSpecData);
-                    // console.log("Powerup activation flow: normalized block targets", JSON.stringify(rawCells));
-                    var cells = [];
-                    for (var i = 0; i < rawCells.length; ++i) {
-                        var cell = rawCells[i];
-                        if (!cell)
-                            continue;
-                        var rowValue = cell.row !== undefined ? cell.row : cell.r;
-                        var columnValue = cell.column !== undefined ? cell.column : (cell.col !== undefined ? cell.col : cell.c);
-                        if (rowValue === undefined || columnValue === undefined)
-                            continue;
-                        var numericRow = Number(rowValue);
-                        var numericColumn = Number(columnValue);
-                        if (!isFinite(numericRow) || !isFinite(numericColumn))
-                            continue;
-                        cells.push({
-                                       row: Math.floor(numericRow),
-                                       column: Math.floor(numericColumn)
-                                   });
-                    }
+                    var cells = Array.isArray(normalizedSpecData) ? normalizedSpecData : [];
                     if (cells.length) {
                         // console.log("Powerup activation flow: dispatching block delta list", JSON.stringify({
                         //     cardUuid: cardData.powerupUuid,
@@ -813,7 +971,7 @@ Engine.GameScene {
             }
             case "PlayerPowerupInGameCards": {
                 if (targetGrid.applyHeroDeltaByColor) {
-                    var colorFilter = cardData.powerupTargetSpecData || "";
+                    var colorFilter = typeof normalizedSpecData === "string" ? normalizedSpecData : "";
                     var heroImpacts = targetGrid.applyHeroDeltaByColor(colorFilter, amount, operation, { trigger: triggerInfo.trigger || "manual", sourceCard: cardData });
                     // console.log("Powerup activation flow: hero delta results", JSON.stringify(heroImpacts));
                     activationApplied = heroImpacts && heroImpacts.length > 0;
@@ -843,7 +1001,17 @@ Engine.GameScene {
                                                                                             spec: spec,
                                                                                             applied: activationApplied
                                                                                         }));
-            return true;
+            var allowRepeatScheduling = !triggerInfo.preventRepeatScheduling && (triggerInfo.enableRepeatScheduling || (triggerInfo.trigger || "manual") === "manual");
+            if (activationApplied && allowRepeatScheduling) {
+                scheduleRepeatingActivation(cardData, sourceGrid, targetGrid, {
+                                                spec: spec,
+                                                specData: normalizedSpecData,
+                                                amount: amount,
+                                                operation: operation,
+                                                targetType: targetType
+                                            });
+            }
+            return activationApplied;
         }
         /* Engine.GameDragItem {
         id: test_rect
@@ -892,6 +1060,7 @@ Engine.GameScene {
 
     } */
         Component.onCompleted: {
+            repeatingActivations = [];
             if (!applyProvidedLoadout(providedLoadout))
             refreshPlayerLoadout();
             refreshOpponentLoadout();

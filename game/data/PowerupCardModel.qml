@@ -174,6 +174,10 @@ Data.PowerupItem {
         powerupHeroRowSpan = record.powerupHeroRowSpan || 1
         powerupHeroColSpan = record.powerupHeroColSpan || 1
         powerupIcon = record.powerupIcon !== undefined ? record.powerupIcon : 0
+        powerupRepeatingAttack = record.powerupRepeatingAttack !== undefined ? !!record.powerupRepeatingAttack : false
+        powerupRepeatCount = normalizedRepeatCount
+                ? normalizedRepeatCount(record.powerupRepeatCount !== undefined ? record.powerupRepeatCount : 1)
+                : Math.max(1, Math.floor(record.powerupRepeatCount || 1))
         dragLocked = record.dragLocked || false
         resetHeroVitals()
         updateEnergyRequirement()
@@ -196,6 +200,8 @@ Data.PowerupItem {
             powerupHeroRowSpan: powerupHeroRowSpan,
             powerupHeroColSpan: powerupHeroColSpan,
             powerupIcon: powerupIcon,
+            powerupRepeatingAttack: powerupRepeatingAttack,
+            powerupRepeatCount: powerupRepeatCount,
             dragLocked: dragLocked
         }
     }

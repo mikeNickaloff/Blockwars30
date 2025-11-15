@@ -378,6 +378,25 @@ Item {
             updateDragEnabled(slot)
         }
     }
+
+    function readyRepeatingCardData() {
+        var ready = []
+        for (var i = 0; i < sidebarCards.length; ++i) {
+            var slot = sidebarCards[i]
+            if (!slot || !slot.cardData)
+                continue
+            var cardData = slot.cardData
+            if (!cardData.powerupRepeatingAttack)
+                continue
+            if (!cardData.heroPlaced || !cardData.heroAlive)
+                continue
+            if (!cardData.activationReady)
+                continue
+            ready.push(cardData)
+        }
+        return ready
+    }
+
     function requestHeroActivation(slot, options) {
         var ignoreInteractions = options && options.ignoreInteractions;
         if (!slot || !slot.cardData)

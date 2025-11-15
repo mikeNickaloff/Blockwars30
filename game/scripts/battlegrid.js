@@ -84,7 +84,7 @@ function hasActiveNonIdleBlocks(grid) {
             if (!entry)
                 continue;
             var state = grid.normalizeStateName(entry.blockState);
-            if (state === "launch" || state === "match" || state === "explode")
+            if (state === "launch" || state === "launchnoexplode" || state === "match" || state === "explode" || state === "scaledown")
                 return true;
         }
     }
