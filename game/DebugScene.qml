@@ -12,6 +12,20 @@ Engine.GameScene {
     id: debugScene
     anchors.fill: parent
     property var blocks: []
+    property real gridWidth: 300
+    property real gridHeight: 300
+    property real gridTopX: 200
+    property real gridTopY: 60
+    property real gridBottomX: gridTopX
+    property real gridBottomY: 340
+    property int gridCellW: 40
+    property int gridCellH: 40
+    property int gridGapX: 1
+    property int gridGapY: 1
+    property real gridOriginX: 40
+    property real gridOriginY: 40
+    property real sidebarWidth: 0
+    property real sidebarMargin: 72
     property alias checkRefillTimer: checkRefillTimer
     property var currentTurn: "top"
     property var turnsLeft: 3
@@ -1232,10 +1246,16 @@ Engine.GameScene {
 
         UI.BattleGrid {
             id:battleGrid_top
-            width: 300
-            height: 300
-            x: 200
-            y: 60
+            width: debugScene.gridWidth
+            height: debugScene.gridHeight
+            x: debugScene.gridTopX
+            y: debugScene.gridTopY
+            cellW: debugScene.gridCellW
+            cellH: debugScene.gridCellH
+            gapX: debugScene.gridGapX
+            gapY: debugScene.gridGapY
+            originX: debugScene.gridOriginX
+            originY: debugScene.gridOriginY
             gameScene: debugScene
             mainHealthMax: 2000
             mainHealth: 2000
@@ -1301,9 +1321,10 @@ Engine.GameScene {
             heroCellWidth: battleGrid_top.cellW
             heroCellHeight: battleGrid_top.cellH
             heroCellSpacing: Math.max(battleGrid_top.gapX, battleGrid_top.gapY)
+            width: debugScene.sidebarWidth > 0 ? debugScene.sidebarWidth : implicitWidth
             anchors.top: battleGrid_top.top
             anchors.bottom: battleGrid_top.bottom
-            anchors.leftMargin: 72
+            anchors.leftMargin: debugScene.sidebarMargin
             onHeroPlacementRequested: function(cardData, heroItem, sceneX, sceneY) {
                 handleHeroPlacementRequest(battleGrid_top, cardData, heroItem, sceneX, sceneY)
             }
@@ -1319,10 +1340,16 @@ Engine.GameScene {
 
         UI.BattleGrid {
             id:battleGrid_bottom
-            width: 300
-            height: 300
-            x: 200
-            y: 340
+            width: debugScene.gridWidth
+            height: debugScene.gridHeight
+            x: debugScene.gridBottomX
+            y: debugScene.gridBottomY
+            cellW: debugScene.gridCellW
+            cellH: debugScene.gridCellH
+            gapX: debugScene.gridGapX
+            gapY: debugScene.gridGapY
+            originX: debugScene.gridOriginX
+            originY: debugScene.gridOriginY
             gameScene: debugScene
             uuid: "bottom"
             launchDirection: "up"
@@ -1353,9 +1380,10 @@ Engine.GameScene {
             heroCellWidth: battleGrid_bottom.cellW
             heroCellHeight: battleGrid_bottom.cellH
             heroCellSpacing: Math.max(battleGrid_bottom.gapX, battleGrid_bottom.gapY)
+            width: debugScene.sidebarWidth > 0 ? debugScene.sidebarWidth : implicitWidth
             anchors.top: battleGrid_bottom.top
             anchors.bottom: battleGrid_bottom.bottom
-            anchors.leftMargin: 72
+            anchors.leftMargin: debugScene.sidebarMargin
             onHeroPlacementRequested: function(cardData, heroItem, sceneX, sceneY) {
                 // console.log("Hero Placement Requested",JSON.stringify(cardData), heroItem, sceneX, sceneY);
                 handleHeroPlacementRequest(battleGrid_bottom, cardData, heroItem, sceneX, sceneY)

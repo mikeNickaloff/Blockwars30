@@ -6,7 +6,7 @@ import "./ui" as UI
 import "." as Scenes
 Engine.GameScene {
     id: mainMenuSceneRoot
-    signal singlePlayerChosen()
+    signal singlePlayerChosen(var loadout)
     signal multiPlayerChosen()
     signal powerupEditorChosen()
     signal optionsChosen()
@@ -17,10 +17,12 @@ Engine.GameScene {
     property UI.MatchSetup matchSetup
     property Scenes.DebugScene debugScene
     property var pendingDebugLoadout: []
+    property string pendingMatchMode: ""
 
-    function openMatchSetup() {
+    function openMatchSetup(mode) {
         if (matchSetupLoader.active || debugSceneLoader.active)
             return
+        pendingMatchMode = mode || "debug"
         matchSetupLoader.active = true
     }
 
@@ -28,8 +30,10 @@ Engine.GameScene {
         if (!matchSetupLoader.active)
             return
         matchSetupLoader.active = false
-        if (!preserveSelection)
+        if (!preserveSelection) {
             pendingDebugLoadout = []
+            pendingMatchMode = ""
+        }
     }
 
 
@@ -55,6 +59,18 @@ Engine.GameScene {
        // debugSceneLoader.active = true
     }
 
+    function beginSinglePlayerScene(loadout) {
+        closeMatchSetup(true)
+        singlePlayerChosen(loadout || [])
+    }
+
+    function handleMatchSetupProceed(loadout) {
+        if (pendingMatchMode === "single")
+            beginSinglePlayerScene(loadout)
+        else
+            beginDebugScene(loadout)
+    }
+
     Engine.GameLayout {
         id: menuLayout
         Layout.fillWidth: true
@@ -63,7 +79,7 @@ Engine.GameScene {
         UI.MenuButton {
             parentItem: mainMenuSceneRoot
             buttonText: "Single Player"
-            onClicked: { mainMenuSceneRoot.singlePlayerChosen() }
+            onClicked: { mainMenuSceneRoot.openMatchSetup("single") }
         }
 
         UI.MenuButton {
@@ -87,7 +103,7 @@ Engine.GameScene {
             parentItem: mainMenuSceneRoot
             buttonText: "Debug"
             onClicked: {
-                mainMenuSceneRoot.openMatchSetup()
+                mainMenuSceneRoot.openMatchSetup("debug")
             }
         }
         UI.MenuButton {
@@ -106,7 +122,7 @@ Engine.GameScene {
             if (!item)
                 return
             item.closeRequested.connect(mainMenuSceneRoot.closeMatchSetup)
-            item.proceedRequested.connect(mainMenuSceneRoot.beginDebugScene)
+            item.proceedRequested.connect(mainMenuSceneRoot.handleMatchSetupProceed)
         }
     }
 

@@ -19,6 +19,7 @@ Item {
     property int maxRows: 0
     property var blockState: "init"
     property var battleGrid
+    property alias blockHealth: blockRoot.health
     property var health: 5
     property var cachedHealth: 5
     property var pendingHealth: 5
@@ -92,6 +93,8 @@ property bool __battleGridSignalRegistered: false
         if (blockRoot.pendingHealth !== blockRoot.health)
             blockRoot.pendingHealth = blockRoot.health
 
+        blockHealthText.text = blockRoot.pendingHealth.toString()
+
     }
 
     onCachedHealthChanged: {
@@ -101,10 +104,10 @@ property bool __battleGridSignalRegistered: false
     onPendingHealthChanged: {
         if (blockRoot.pendingHealth === blockRoot.health)
             return;
-        if (pendingHealthApplyTimer.running)
-            pendingHealthApplyTimer.restart();
-        else
-            pendingHealthApplyTimer.start();
+        blockRoot.health = blockRoot.pendingHealth;
+        blockRoot.cachedHealth = blockRoot.pendingHealth
+        blockHealthText.text = blockRoot.pendingHealth.toString()
+
     }
     Component.onCompleted: {
         blockRoot.blockState = "idle"
@@ -123,6 +126,9 @@ property bool __battleGridSignalRegistered: false
         if (blockState === "launch") {
             explodeAfterLaunch = true;
             resetLaunchScale();
+            chargingParticles.activated = false
+            chargingParticles.enabled = false
+            chargingParticles.visible = false
         } else if (blockState === "launchNoExplode") {
             explodeAfterLaunch = false;
         }
@@ -132,7 +138,7 @@ property bool __battleGridSignalRegistered: false
             postLaunchStateTimer.running = true;
         }
         if (blockState === "scaleDown") {
-            blockLoader.sourceComponent = idleComponent;
+          //  blockLoader.sourceComponent = idleComponent;
             triggerScaleDownAnimation();
         }
         if (blockState == "explodeKilled") {
@@ -142,9 +148,15 @@ property bool __battleGridSignalRegistered: false
         if (blockState == "waitAndExplode") {
             waitAndExplodeTimer.running = true
             waitAndExplodeTimer.restart()
+            chargingParticles.activated = false
+            chargingParticles.enabled = false
+            chargingParticles.visible = false
         }
         if (blockState == "idle") {
             blockLoader.sourceComponent = idleComponent;
+            chargingParticles.activated = false
+            chargingParticles.enabled = false
+            chargingParticles.visible = false
             energyAmount = 0;
             explodeAfterLaunch = true;
             resetLaunchScale();
@@ -152,10 +164,26 @@ property bool __battleGridSignalRegistered: false
         if (!hasLaunched) {
             if (blockState == "gain")
                 blockLoader.sourceComponent = gainComponent;
+            chargingParticles.visible = true
+            chargingParticles.enabled = true
+            chargingParticles.activated = true
+            chargingParticles.burst()
+            if (blockState == "matched") {
+                if (matchDelayTimer.running == false) {
+                    matchDelayTimer.interval = ((6 * blockRoot.row) + blockRoot.column) * 5;
+                    matchDelayTimer.running = true;
+                    matchDelayTimer.restart();
+                }
+            }
+
             if (blockState == "gainCooldown")
                 blockLoader.sourceComponent = gainCooldownComponent;
+            chargingParticles.activated = false
+            chargingParticles.enabled = false
+            chargingParticles.visible = false
         }
     }
+
     Timer {
         id: pendingHealthApplyTimer
         running: false
@@ -166,6 +194,8 @@ property bool __battleGridSignalRegistered: false
             if (blockRoot.pendingHealth === blockRoot.health)
                 return;
             blockRoot.health = blockRoot.pendingHealth;
+            blockHealthText.text = blockRoot.pendingHealth.toString()
+            blockRoot.cachedHealth = blockRoot.pendingHealth
         }
     }
 
@@ -203,6 +233,16 @@ property bool __battleGridSignalRegistered: false
             blockLoader.sourceComponent = launchComponent;
         }
     }
+    Timer {
+     id: matchDelayTimer
+     running: false
+     repeat: false
+     interval: (row * 6 + column) * 15
+     triggeredOnStart: false
+     onTriggered: {
+         blockLoader.sourceComponent = matchComponent;
+     }
+    }
 
     Component {
         id: blockLaunchComponent
@@ -215,8 +255,8 @@ property bool __battleGridSignalRegistered: false
             itemName: blockRoot.itemName
             frameWidth: 64
             frameHeight: 64
-            width: frameWidth
-            height: frameHeight
+            width: 92
+            height: 92
             scale: blockRoot.spriteAnimationDisplaySize / frameWidth
             frameCount: 5
             frameDuration: 60
@@ -238,8 +278,8 @@ property bool __battleGridSignalRegistered: false
             itemName: blockRoot.itemName
             frameWidth: 64
             frameHeight: 64
-            width: frameWidth
-            height: frameHeight
+            width: 92
+            height: 92
             scale: blockRoot.spriteAnimationDisplaySize / frameWidth
             frameCount: 3
             frameDuration: 125
@@ -247,6 +287,29 @@ property bool __battleGridSignalRegistered: false
             reverse: false
             onAnimationEndCallback: function(itemName) {
                 blockRoot.blockState = "gainCooldown"
+            }
+        }
+    }
+    Component {
+        id: matchComponent
+        Engine.GameSpriteSheetItem {
+            anchors.fill: undefined
+            anchors.centerIn: parent
+            transformOrigin: Item.Center
+            spriteSheetFile: blockLaunchSpriteSheet()
+            gameScene: blockRoot.gameScene
+            itemName: blockRoot.itemName
+            frameWidth: 64
+            frameHeight: 64
+            width: 92
+            height: 92
+            scale: blockRoot.spriteAnimationDisplaySize / frameWidth
+            frameCount: 3
+            frameDuration: 70
+            loops: 1
+            reverse: false
+            onAnimationEndCallback: function(itemName) {
+
             }
         }
     }
@@ -421,5 +484,10 @@ property bool __battleGridSignalRegistered: false
             blockRoot.blockScaleX = 1.5
             blockRoot.blockScaleY = 0
             scaleDownStateTimer.restart()
+        }
+        ChargeEffect {
+            enabled: false
+            id: chargingParticles
+            visible: false
         }
 }

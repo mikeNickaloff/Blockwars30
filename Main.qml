@@ -16,6 +16,13 @@ Window {
             mainMenu.visible = false
             powerupEditor.visible = true
         }
+        onSinglePlayerChosen: function(loadout) {
+            powerupEditor.visible = false
+            mainMenu.visible = false
+            if (singlePlayerScene.hasOwnProperty("providedLoadout"))
+                singlePlayerScene.providedLoadout = loadout || []
+            singlePlayerScene.visible = true
+        }
     }
 
     PowerupEditor {
@@ -24,6 +31,16 @@ Window {
         visible: false
         onCloseRequested: {
             powerupEditor.visible = false
+            mainMenu.visible = true
+        }
+    }
+
+    SinglePlayerScene {
+        id: singlePlayerScene
+        anchors.fill: parent
+        visible: false
+        onBattleOutcomeDismissed: {
+            singlePlayerScene.visible = false
             mainMenu.visible = true
         }
     }

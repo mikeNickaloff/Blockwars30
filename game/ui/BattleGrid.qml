@@ -132,6 +132,12 @@ Item {
     ]
 
     onPostSwapCascadingChanged: distributePostSwapCascadeStatus()
+    onCellWChanged: refreshGridLayout()
+    onCellHChanged: refreshGridLayout()
+    onGapXChanged: refreshGridLayout()
+    onGapYChanged: refreshGridLayout()
+    onOriginXChanged: refreshGridLayout()
+    onOriginYChanged: refreshGridLayout()
 
     property var pools: []
 
@@ -278,6 +284,46 @@ Item {
             x: originX + column * (cellW + gapX),
             y: originY + row * (cellH + gapY)
         };
+    }
+
+    function refreshHeroLayout() {
+        for (var key in heroPlacements) {
+            if (!heroPlacements.hasOwnProperty(key))
+                continue;
+            var placement = heroPlacements[key];
+            if (!placement || !placement.heroItem)
+                continue;
+            placement.heroItem.cellWidth = cellW;
+            placement.heroItem.cellHeight = cellH;
+            placement.heroItem.cellSpacing = Math.max(gapX, gapY);
+            var heroPos = cellPosition(placement.row, placement.column);
+            placement.heroItem.x = heroPos.x;
+            placement.heroItem.y = heroPos.y;
+            placement.heroItem.anchoredRow = placement.row;
+            placement.heroItem.anchoredColumn = placement.column;
+        }
+    }
+
+    function refreshGridLayout() {
+        ensureMatrix();
+        for (var row = 0; row < gridRows; ++row) {
+            for (var column = 0; column < gridCols; ++column) {
+                var wrapper = getBlockWrapper(row, column);
+                if (!wrapper)
+                    continue;
+                if (wrapper.entry) {
+                    wrapper.entry.width = cellW;
+                    wrapper.entry.height = cellH;
+                }
+                wrapper.width = cellW;
+                wrapper.height = cellH;
+                var pos = cellPosition(row, column);
+                wrapper.x = pos.x;
+                wrapper.y = pos.y;
+            }
+        }
+        refreshHeroLayout();
+        updateBlockScenePositions();
     }
 
     function handleBlockDestroyed(event) {
@@ -936,15 +982,41 @@ Item {
 
     function applyDamageToHeroCell(row, column, amount, context) {
         var placement = heroPlacementForCell(row, column);
-        if (!placement || !placement.cardData)
+        if (!placement || !placement.cardData) {
+            console.log("[launch] applyDamageToHeroCell skipped: no placement or cardData", JSON.stringify({
+                          row: row,
+                          column: column,
+                          amount: amount,
+                          launchDirection: launchDirection
+                      }));
             return { applied: 0, destroyed: false, key: null };
+        }
         var dmg = Math.max(0, Math.floor(amount));
-        if (dmg <= 0)
+        if (dmg <= 0) {
+            console.log("[launch] applyDamageToHeroCell skipped: non-positive damage", JSON.stringify({
+                          row: row,
+                          column: column,
+                          amount: amount,
+                          normalized: dmg,
+                          key: placement.key
+                      }));
             return { applied: 0, destroyed: false, key: placement.key };
+        }
         var previous = placement.cardData.heroCurrentHealth;
         placement.cardData.applyHeroDamage(dmg);
         var applied = Math.max(0, previous - placement.cardData.heroCurrentHealth);
         var defeated = !placement.cardData.heroAlive;
+        console.log("[launch] applyDamageToHeroCell applied", JSON.stringify({
+                      row: row,
+                      column: column,
+                      key: placement.key,
+                      previousHealth: previous,
+                      damage: dmg,
+                      applied: applied,
+                      remainingHealth: placement.cardData.heroCurrentHealth,
+                      defeated: defeated,
+                      launchDirection: launchDirection
+                  }));
         if (defeated)
             handleHeroDefeat(placement, Object.assign({ reason: "damage" }, context || {}));
         else
@@ -954,15 +1026,47 @@ Item {
 
     function applyBlockDelta(row, column, amount, operation, context) {
         var entry = getBlockEntryAt(row, column);
-        if (!entry)
+        if (!entry) {
+            console.log("[launch] applyBlockDelta skipped: missing entry", JSON.stringify({
+                          row: row,
+                          column: column,
+                          amount: amount,
+                          operation: operation,
+                          launchDirection: launchDirection
+                      }));
             return { affected: false };
+        }
         var delta = Math.max(0, Math.floor(amount));
-        if (delta <= 0)
+        if (delta <= 0) {
+            console.log("[launch] applyBlockDelta skipped: non-positive delta", JSON.stringify({
+                          row: row,
+                          column: column,
+                          amount: amount,
+                          normalized: delta,
+                          operation: operation,
+                          launchDirection: launchDirection
+                      }));
             return { affected: false };
+        }
         var placement = heroPlacementForCell(row, column);
         if (placement && placement.cardData) {
-            if (operation && operation.toString().toLowerCase() === "increase")
+            if (operation && operation.toString().toLowerCase() === "increase") {
+                console.log("[launch] applyBlockDelta redirecting to hero heal", JSON.stringify({
+                              row: row,
+                              column: column,
+                              delta: delta,
+                              key: placement.key,
+                              launchDirection: launchDirection
+                          }));
                 return Object.assign({ affected: true, hero: true }, applyHeroHealingAt(row, column, delta, context));
+            }
+            console.log("[launch] applyBlockDelta redirecting to hero damage", JSON.stringify({
+                          row: row,
+                          column: column,
+                          delta: delta,
+                          key: placement.key,
+                          launchDirection: launchDirection
+                      }));
             return Object.assign({ affected: true, hero: true }, applyDamageToHeroCell(row, column, delta, context));
         }
 
@@ -971,6 +1075,13 @@ Item {
         var op = operation && operation.toString().toLowerCase() === "increase" ? "increase" : "decrease";
         if (op === "increase") {
             entry.health = entry.health + delta;
+            console.log("[launch] applyBlockDelta increased health", JSON.stringify({
+                          row: row,
+                          column: column,
+                          delta: delta,
+                          healthAfter: entry.health,
+                          launchDirection: launchDirection
+                      }));
             return { affected: true, destroyed: false, hero: false, health: entry.health };
         }
 
@@ -980,8 +1091,25 @@ Item {
             entry.health = 0;
             entry.energyAmount = Math.max(entry.energyAmount || 0, previousHealth);
             entry.blockState = "waitAndExplode";
+            console.log("[launch] applyBlockDelta destroyed block", JSON.stringify({
+                          row: row,
+                          column: column,
+                          delta: delta,
+                          previousHealth: previousHealth,
+                          blockHealthAfter: entry.health,
+                          energyAmount: entry.energyAmount,
+                          launchDirection: launchDirection
+                      }));
             return { affected: true, destroyed: true, hero: false, health: 0, energyAmount: entry.energyAmount };
         }
+        console.log("[launch] applyBlockDelta damaged block", JSON.stringify({
+                      row: row,
+                      column: column,
+                      delta: delta,
+                      previousHealth: previousHealth,
+                      blockHealthAfter: entry.health,
+                      launchDirection: launchDirection
+                  }));
         return { affected: true, destroyed: false, hero: false, health: entry.health };
     }
 
@@ -1326,18 +1454,27 @@ Item {
             if (pending !== undefined && pending !== null)
                 return pending;
         }
-        if (entry.health === undefined || entry.health === null)
+        if (entry.blockHealth === undefined || entry.blockHealth === null)
             return 0;
-        return entry.health;
+        return entry.blockHealth;
     }
 
     function assignEntryHealthDeferred(entry, value) {
         if (!entry)
             return;
-        if (supportsPendingHealth(entry))
+        var pendingCapable = supportsPendingHealth(entry);
+        var previousHealth = getEntryEffectiveHealth(entry);
+        if (pendingCapable)
             entry.pendingHealth = value;
         else
-            entry.health = value;
+            entry.blockHealth = value;
+        console.log("[launch] assignEntryHealthDeferred", JSON.stringify({
+                          row: entry.row,
+                          column: entry.column,
+                          previousHealth: previousHealth,
+                          newHealth: value,
+                          pendingCapable: pendingCapable
+                      }));
     }
 
     function getEntryAt(row, column) {
@@ -1414,8 +1551,8 @@ Item {
                 var nextBlockColor = initialColorMatrix && initialColorMatrix[row]
                         ? initialColorMatrix[row][column]
                         : null;
-                if (!nextBlockColor && pools[column] && typeof pools[column].getNextBlockColor === "function")
-                    nextBlockColor = pools[column].getNextBlockColor();
+                if (!nextBlockColor && pools[0] && typeof pools[0].getNextBlockColor === "function")
+                    nextBlockColor = pools[0].getNextBlockColor();
                 if (!nextBlockColor && blockPalette && blockPalette.length > 0)
                     nextBlockColor = blockPalette[Math.floor(Math.random() * blockPalette.length)];
 
@@ -1672,16 +1809,29 @@ Item {
     }
 
     function calculateLaunchDamage(payload) {
-        if (!payload)
+        if (!payload) {
+            console.log("[launch] calculateLaunchDamage abort: missing payload");
             return { remainingHealth: 0, blocksDamaged: [], directDamage: 0 };
+        }
 
         const column = payload.column;
-        if (column === undefined || column === null || column < 0 || column >= gridCols)
+        if (column === undefined || column === null || column < 0 || column >= gridCols) {
+            console.log("[launch] calculateLaunchDamage abort: invalid column", JSON.stringify({
+                          column: column,
+                          gridCols: gridCols,
+                          health: payload.health
+                      }));
             return { remainingHealth: payload.health || 0, blocksDamaged: [], directDamage: 0 };
+        }
 
         var remaining = payload.health !== undefined && payload.health !== null ? payload.health : 0;
-        if (remaining <= 0)
+        if (remaining <= 0) {
+            console.log("[launch] calculateLaunchDamage abort: non-positive payload health", JSON.stringify({
+                          column: column,
+                          health: payload.health
+                      }));
             return { remainingHealth: remaining, blocksDamaged: [], directDamage: 0 };
+        }
 
         ensureMatrix();
         const damagedBlocks = [];
@@ -1690,6 +1840,15 @@ Item {
         const rowStart = damageAscending ? 0 : gridRows - 1;
         const rowEnd = damageAscending ? gridRows : -1;
         const rowStep = damageAscending ? 1 : -1;
+
+        console.log("[launch] calculateLaunchDamage start", JSON.stringify({
+                      column: column,
+                      initialHealth: remaining,
+                      damageAscending: damageAscending,
+                      rowStart: rowStart,
+                      rowEnd: rowEnd,
+                      rowStep: rowStep
+                  }));
 
         var columnClearedBeforeImpact = true;
         for (var scanRow = 0; scanRow < gridRows; ++scanRow) {
@@ -1707,11 +1866,22 @@ Item {
 
         for (var row = rowStart; row !== rowEnd && remaining > 0; row += rowStep) {
             const entry = getBlockEntryAt(row, column);
-            if (!entry)
+            if (!entry) {
+                console.log("[launch] calculateLaunchDamage skip: empty cell", JSON.stringify({
+                              row: row,
+                              column: column
+                          }));
                 continue;
+            }
             const state = normalizeStateName(entry.blockState);
-            if (state && state !== "idle")
+            if (state && state !== "idle") {
+                console.log("[launch] calculateLaunchDamage skip: state not idle", JSON.stringify({
+                              row: row,
+                              column: column,
+                              state: state
+                          }));
                 continue;
+            }
 
             var blockColor = entry.blockColor || (entry.entry && entry.entry.blockColor) || "";
             var heroPlacement = heroPlacementForCell(row, column);
@@ -1731,18 +1901,32 @@ Item {
                     if (shakeEffector)
                         shakeEffector.triggerImpact();
                     lastImpact = { row: row, column: column };
+                    console.log("[launch] calculateLaunchDamage hero impact", JSON.stringify({
+                                  row: row,
+                                  column: column,
+                                  heroHealthBefore: heroHealthBefore,
+                                  applied: heroDamageResult.applied,
+                                  remainingHealth: remaining,
+                                  destroyed: heroDamageResult.destroyed
+                              }));
                 }
                 continue;
             }
 
-            if (entry.health === undefined || entry.health === null)
+            if (entry.blockHealth === undefined || entry.blockHealth === null)
                 entry.health = 100;
             if (supportsPendingHealth(entry) && (entry.pendingHealth === undefined || entry.pendingHealth === null))
-                entry.pendingHealth = entry.health;
+                entry.pendingHealth = entry.blockHealth;
 
             const targetHealth = getEntryEffectiveHealth(entry);
-            if (targetHealth <= 0)
+            if (targetHealth <= 0) {
+                console.log("[launch] calculateLaunchDamage skip: non-positive target health", JSON.stringify({
+                              row: row,
+                              column: column,
+                              targetHealth: targetHealth
+                          }));
                 continue;
+            }
             if (remaining >= targetHealth) {
                 remaining -= targetHealth;
                 entry.energyAmount = Math.max(entry.energyAmount || 0, targetHealth);
@@ -1758,6 +1942,12 @@ Item {
                 if (shakeEffector)
                     shakeEffector.triggerImpact();
                 lastImpact = { row: row, column: column };
+                console.log("[launch] calculateLaunchDamage destroyed block", JSON.stringify({
+                              row: row,
+                              column: column,
+                              targetHealth: targetHealth,
+                              remainingAfter: remaining
+                          }));
             } else {
                 var survivingHealth = Math.max(0, targetHealth - remaining);
                 assignEntryHealthDeferred(entry, survivingHealth);
@@ -1766,10 +1956,17 @@ Item {
                                         column: column,
                                         destroyed: false,
                                         color: blockColor,
-                                        energyReward: 0
+                                        energyReward: remaining
                                     });
                 remaining = 0;
                 lastImpact = { row: row, column: column };
+                console.log("[launch] calculateLaunchDamage partial damage", JSON.stringify({
+                              row: row,
+                              column: column,
+                              targetHealth: targetHealth,
+                              survivingHealth: survivingHealth,
+                              remainingHealthBudget: remaining
+                          }));
             }
         }
 
@@ -1839,22 +2036,49 @@ Item {
     }
 
     function applyLaunchOutcome(payload, damageResult) {
-        if (!payload)
+        if (!payload) {
+            console.log("[launch] applyLaunchOutcome abort: missing payload");
             return;
+        }
         var row = Number(payload.row);
         var column = Number(payload.column);
-        if (!isFinite(row) || !isFinite(column))
+        if (!isFinite(row) || !isFinite(column)) {
+            console.log("[launch] applyLaunchOutcome abort: non-numeric coords", JSON.stringify({
+                          row: payload.row,
+                          column: payload.column,
+                          payload: payload
+                      }));
             return;
+        }
         row = Math.floor(row);
         column = Math.floor(column);
-        if (row < 0 || row >= gridRows || column < 0 || column >= gridCols)
+        if (row < 0 || row >= gridRows || column < 0 || column >= gridCols) {
+            console.log("[launch] applyLaunchOutcome abort: coords out of bounds", JSON.stringify({
+                          row: row,
+                          column: column,
+                          gridRows: gridRows,
+                          gridCols: gridCols
+                      }));
             return;
+        }
         ensureMatrix();
         var entry = getBlockEntryAt(row, column);
-        if (!entry)
+        if (!entry) {
+            console.log("[launch] applyLaunchOutcome abort: entry missing", JSON.stringify({
+                          row: row,
+                          column: column
+                      }));
             return;
-        if (normalizeStateName(entry.blockState) !== "launch" && normalizeStateName(entry.blockState) !== "launchnoexplode")
+        }
+        var normalizedState = normalizeStateName(entry.blockState);
+        if (normalizedState !== "launch" && normalizedState !== "launchnoexplode") {
+            console.log("[launch] applyLaunchOutcome abort: entry not in launch state", JSON.stringify({
+                          row: row,
+                          column: column,
+                          state: normalizedState
+                      }));
             return;
+        }
         var firstImpact = null;
         if (damageResult && Array.isArray(damageResult.blocksDamaged)) {
             for (var i = 0; i < damageResult.blocksDamaged.length; ++i) {
@@ -1870,6 +2094,14 @@ Item {
                     ? Math.max(0, Math.floor(damageResult.remainingHealth))
                     : 0;
             assignEntryHealthDeferred(entry, resultingHealth);
+            console.log("[launch] applyLaunchOutcome applied", JSON.stringify({
+                          row: row,
+                          column: column,
+                          resultingHealth: resultingHealth,
+                          firstImpact: firstImpact,
+                          remainingHealth: damageResult.remainingHealth,
+                          blocksDamaged: damageResult.blocksDamaged ? damageResult.blocksDamaged.length : 0
+                      }));
         }
 
         if (firstImpact && !firstImpact.destroyed)
@@ -1958,7 +2190,7 @@ Item {
     }
 
     Component.onCompleted: {
-        for (var i=0; i<6; i++) {
+        for (var i=0; i<1; i++) {
             var poolInst = poolComp.createObject(root);
             pools[i] = poolInst;
             pools[i].currentIndex = Math.floor(Math.random() * 1000)
